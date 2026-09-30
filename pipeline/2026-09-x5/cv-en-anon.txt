@@ -1,0 +1,242 @@
+Senior Go Backend Engineer - Microservices, Highload, Distributed Systems
+
+Email: [email]
+Telegram: [telegram]
+WhatsApp: [phone]
+
+Full-time. Remote.
+
+SUMMARY
+
+Backend engineer with 5+ years of commercial Go experience, full-stack before that.
+My core profile is microservices and high load: I designed and shipped to production a telemetry
+ingestion service handling 30K measurements/sec with store-and-forward and batched writes into
+ClickHouse, worked at the Go runtime level (escape analysis, sync.Pool, GOMEMLIMIT, pprof), and
+kept a 14-microservice system fault-tolerant through circuit breakers, exponential backoff and
+rate limiting.
+REST API and gRPC are both working tools for me: external contracts live on chi over the standard
+net/http with versioning, and in one of the systems I moved inter-service communication from
+JSON/REST to gRPC/Protobuf, cutting traffic and latency over constrained links. On storage,
+PostgreSQL is the primary one (schema redesign, N+1 removal, batching, keyset pagination,
+migration linting), ClickHouse for analytics, MongoDB for raw semi-structured data with a
+changing shape, Redis for caching.
+I worked in teams of 7 to 18 people, including starting a project as the only backend engineer
+and owning a whole direction: data model, contracts with neighbouring teams, decomposition,
+review, and requirements gathered directly from the customer's engineers. These teams had no
+dedicated DevOps - CI, deployment to Kubernetes and production troubleshooting were on the
+backend engineers themselves.
+I work agent-first: I built a multi-agent code review and refactoring pipeline for a Go backend
+on Claude Code, with the project's architecture rules encoded as agent instructions, while design,
+contracts and the final review stay under my own control.
+
+
+SKILLS
+
+Go                   microservices, concurrency (goroutines, channels, context), generics,
+                     runtime-level work (escape analysis, sync.Pool, GOMEMLIMIT, pprof,
+                     runtime/trace), CLI tooling, clean layering and dependency inversion
+REST API             contract design and versioning, chi over the standard net/http,
+                     middleware (authentication, limits, tracing, logging), pagination and
+                     idempotent operations, OpenAPI specs for consumers
+APIs & protocols     HTTP/HTTPS, gRPC/Protobuf (migrated a 14-service system from JSON/REST),
+                     GraphQL (gqlgen), webhooks and third-party integrations
+Databases            PostgreSQL: schema design, indexes, transactions and isolation levels,
+                     N+1 removal, batching, keyset pagination, migration linting;
+                     ClickHouse (partitioning, materialized views, codecs);
+                     MongoDB (raw semi-structured payloads, TTL, indexes);
+                     Redis (caching, rate limiting, idempotency keys)
+Highload             ingestion up to 30K messages/sec, batching and backpressure, stateless
+                     workers scaled horizontally, autoscaling by queue depth, hot-path
+                     profiling, graceful degradation instead of failure
+Distributed systems  microservice architecture, idempotent consumers and at-least-once
+                     delivery, transactional outbox, saga with compensating steps, circuit
+                     breaker, retry with exponential backoff, rate limiting, store-and-forward
+Testing              unit and integration tests, testcontainers (real PostgreSQL, Redis and a
+                     broker in containers), migrations run inside tests, load testing, tests
+                     as a CI gate, critical business logic coverage 0% -> 95%
+Infrastructure       Docker, Kubernetes (including managed), GitLab CI/CD, Terraform, S3,
+                     deployment with automatic migrations and a health gate on rollout
+Message brokers      Kafka, RabbitMQ
+Observability        Prometheus, Grafana (latency, RPS, queue depth, error classes),
+                     OpenTelemetry: traces and metrics via the OTel SDK and OTLP, context
+                     propagation across services; production troubleshooting -
+                     pg_stat_statements, EXPLAIN (ANALYZE, BUFFERS), pprof, system.query_log
+Security             OAuth2 / OIDC: JWT validation, client credentials between services
+AI-assisted dev      Claude Code: custom agents and skills, multi-agent review pipeline,
+                     test and harness generation, project rules as agent instructions
+Other languages      Node.js (Express, NestJS - legacy I migrated to Go), Python (data
+                     parsing scripts, automation), PHP (early full-stack period)
+English              B2 (working proficiency)
+
+
+EXPERIENCE
+
+Go Developer - [Company 1]                                            Jan 2026 - Sep 2026
+Product IT company: in-house performance-marketing platforms, including a payments domain.
+
+Team: 7 people across two products - a team lead, 3 backend engineers, a frontend engineer,
+a manual QA and a business analyst. No dedicated DevOps, CI and deployment were on the backend
+engineers. Sprints, all code through pull requests with mandatory review.
+
+Responsibilities:
+- Built and maintained Go microservices for the payments domain and the ad-account registry:
+  REST API on chi over net/http, inter-service communication over gRPC, async part over RabbitMQ.
+- Designed PostgreSQL schemas and service contracts, wrote SQL migrations and kept them under a
+  linter and pre-push hooks.
+- Integrated external systems - a payment provider and advertising platforms' APIs - behind retry
+  with backoff, circuit breaker, idempotent retries and a daily reconciliation of exports.
+- Wrote unit tests for domain logic and integration tests against real PostgreSQL and Redis in
+  containers (testcontainers) with migrations run inside the test; the suite is a CI gate.
+- Took part in architecture decisions: breaking the monolith down by bounded contexts, dependency
+  inversion, preparing modules for extraction into services, design review of contracts with
+  neighbouring teams.
+- Kept CI/CD and infrastructure together with the other backend engineers: GitLab CI pipelines,
+  image builds, deployment to Kubernetes with automatic migrations and a health gate on rollout.
+- Troubleshot production issues: pg_stat_statements and EXPLAIN (ANALYZE, BUFFERS) on heavy
+  queries, pprof on services, metrics and alerts in Prometheus and Grafana.
+
+Key results:
+- Eliminated the risk of duplicate execution of critical financial operations by implementing
+  idempotency keys at both API and storage level.
+- Led the migration of a core platform domain to a new data model, redesigning schemas and
+  service contracts; production traffic was switched over with no drift between environments.
+- Moved large volumes of production data with zero loss by building a Go CLI tool with
+  validation, quarantine of invalid records and a safe re-run mechanism.
+- Sped up the ad-account registry: p95 dropped from 1-2 s to 300-500 ms by removing N+1 queries
+  and introducing batching and keyset pagination in PostgreSQL.
+- Reduced coupling in the monolith by replacing direct access to other modules' repositories with
+  dependency inversion, which turned extracting a module into a service into a mechanical step.
+- Automated migration checks with linters and pre-push hooks - broken migrations stopped reaching
+  deployment.
+
+AI in my work: Claude Code in the terminal as the main tool. I built a multi-agent review pipeline
+around the project's architecture rules and used agents for the first pass on tests - the agent
+brings up the harness (containers with dependencies, migrations run inside the test) and drafts
+from a behaviour description, then I read the diff and finish the assertions and edge cases.
+Boilerplate (handlers, repositories, DTOs, mocks), draft migrations and making sense of unfamiliar
+legacy went the same way.
+
+Stack: Go, chi, pgx, PostgreSQL, RabbitMQ, Redis, gRPC, Protobuf, Docker, Kubernetes, Terraform,
+GitLab CI/CD, Prometheus, Grafana
+
+
+Go Developer - [Company 2]                                            May 2023 - Jan 2026
+Engineering software for the oil & gas industry: data collection and analytics from equipment at
+remote drilling sites.
+
+Team: three projects in a row. On the first one I ran the backend alone for ten months within an
+overall team of 9; the second had a team of 12 (3 backend, 2 frontend); the third had 18 people
+(6 backend, 5 frontend, test automation engineers, designers). Sprints, review in pull requests,
+CI on the backend engineers.
+
+Responsibilities:
+- Built a high-load telemetry ingestion service for drilling equipment in Go: up to 30K
+  measurements/sec, store-and-forward to survive link outages, batched writes into ClickHouse.
+- Designed and evolved the microservice architecture of a 14-service system: service boundaries,
+  contracts, fault tolerance, behaviour when neighbouring services degrade.
+- Migrated inter-service communication from JSON/REST to gRPC/Protobuf and maintained the REST
+  API for external consumers and analytical dashboards.
+- Worked with several storages matched to the shape of the load: ClickHouse for analytics
+  (partitioning, materialized views, codecs), PostgreSQL for business entities, MongoDB for raw
+  semi-structured payloads from sources with TTL, Redis for caching.
+- Ran load tests on the ingestion path and wrote integration tests for link outages, redelivery
+  and slow consumers; prepared the test data for those runs.
+- Built observability and investigated incidents: Prometheus, Grafana, OpenTelemetry, error
+  classification, dashboards for latency, RPS, queue depth and processing rate.
+- Owned the data ingestion direction: gathered requirements directly from the customer's
+  engineers, was responsible for the data model and contracts, decomposed and distributed tasks
+  to the developers who joined, ran review and pulled the team out of legacy practices.
+- Worked with the frontend, analytics and test automation teams: API contract agreements, version
+  compatibility on releases, joint investigation of incidents at service boundaries.
+
+Key results:
+- Achieved 100% data completeness from the rigs through store-and-forward and batched writes.
+- Sped up analytical queries 10x+ (p95 from several seconds to ~200 ms) by redesigning the
+  ClickHouse schema.
+- Prevented cascading failures across the 14-microservice system by introducing circuit breakers,
+  exponential backoff and rate limiting.
+- Relieved GC and memory pressure on the hot ingestion path: escape analysis on decoding buffers,
+  sync.Pool for batch buffers, GOMEMLIMIT set to the container limit, bottlenecks found with
+  pprof and runtime/trace.
+- Shortened incident response time by building the observability stack and instrumenting services
+  with OpenTelemetry - end-to-end cross-service latency became visible as a whole.
+- Increased team delivery speed by 20-30% by refactoring legacy code, extracting shared
+  components and separating business logic from the infrastructure layer.
+
+AI in my work: GitHub Copilot for in-editor completion plus chat models for making sense of other
+people's code and analytical database schemas, generating test data for load runs and drafting
+tests. Towards the end of the project I moved to terminal coding agents for the same routine.
+
+Stack: Go, gRPC, Protobuf, ClickHouse, PostgreSQL, MongoDB, Redis, RabbitMQ, Prometheus, Grafana,
+OpenTelemetry, Docker, Kubernetes, GitLab CI/CD
+
+
+Go Developer - [Company 3]                                            Jul 2021 - Feb 2023
+Large AutoTech platform for buying used cars.
+
+Team: 10 people on a single product - 3 backend, 3 frontend, a business analyst and a systems
+analyst, 2 test automation engineers, a designer. Sprints, mandatory review in pull requests.
+
+Responsibilities:
+- Developed core Go microservices - valuation, inspections, deals - for a system used by 100+
+  field inspectors.
+- Designed the REST API for the inspectors' mobile app and internal services, agreed contracts
+  with the mobile and frontend teams.
+- Integrated paid third-party vehicle-check services behind retry, circuit breaker and Redis
+  caching.
+- Implemented authentication for the mobile app and internal APIs (OAuth2 / OIDC, JWT validation,
+  token refresh).
+- Wrote unit tests for domain logic and integration tests against a real database in a container,
+  and introduced the code review practice in the team.
+- Migrated the legacy Node.js backend (Express, then NestJS) to Go domain by domain: a new service
+  came up alongside, traffic was switched per endpoint, old and new ran in parallel for a while.
+- Handled asynchronous processing through a message broker and work with S3, maintained GitLab CI
+  pipelines and image builds.
+- Worked closely with the systems analyst and test automation engineers: requirements review,
+  acceptance, defect triage.
+
+Key results:
+- Raised critical business logic coverage from 0% to 95% by introducing code review and tests
+  where there were none at all.
+- Handled 10-15K valuations/day by building an automated car valuation service with
+  precomputation and caching of comparable listings.
+- Cut dispatchers' manual work threefold by implementing automatic assignment of inspection
+  requests based on geolocation and inspector workload.
+- Removed blocking in the mobile app by moving photo uploads (~10K/day) to asynchronous
+  processing via a broker with direct upload to S3.
+- Improved stability and reduced spend on paid external requests through fault-tolerance patterns
+  and caching.
+
+AI in my work: in the later part of the project - GitHub Copilot for completion and a chat model
+for making sense of other people's Express and Nest code while migrating legacy to Go, as well as
+for generating test data.
+
+Stack: Go, Node.js (Express, NestJS), PostgreSQL, Redis, Kafka, RabbitMQ, S3, Docker,
+GitLab CI/CD
+
+
+AI-ASSISTED ENGINEERING
+
+- Built a multi-agent review pipeline for a Go backend (Go 1.24, chi, pgx, PostgreSQL) on
+  Claude Code: rule-based first-pass review (layers, module boundaries, security, error handling,
+  SQL migrations) -> deep analysis (transactions, edge cases, cross-file consistency) -> a critic
+  agent that independently validates findings -> a refactoring agent that applies confirmed fixes.
+- Use agents for writing tests: the first pass from a behaviour description and the harness
+  (containers with dependencies, migrations run inside the test) are on the agent, assertions and
+  edge cases are on me; boilerplate, draft migrations and unfamiliar legacy go the same way.
+- Added a meta-analysis agent that reads pipeline traces and finds gaps in the agent chain, so the
+  process improves, not just the code.
+- Write custom skills for recurring workflows; architecture, contracts and the final review stay
+  with me.
+
+
+EDUCATION
+
+[University], 2022
+Information Systems and Technologies - Software for Computing Systems and Automated Systems
+
+
+LANGUAGES
+
+Russian - native
+English - B2

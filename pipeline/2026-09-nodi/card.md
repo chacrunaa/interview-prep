@@ -1,0 +1,88 @@
+# nodi
+
+| | |
+|---|---|
+| Компания | Nodi |
+| Роль | Senior Full Stack (Go, GraphQL, HTMX) |
+| Источник | Hirify |
+| Подготовлено | 2026-09-29 |
+| Отправлено | ? |
+| Стадия | ? |
+| Дальше | ? |
+
+## Файлы
+
+- [cv-en.txt](cv-en.txt)
+
+## Вакансия
+
+_Исходный текст не сохранился (до переезда `for-scan-vacancy.txt` перезаписывался)._
+
+## Разбор
+
+Источник: `resume-templates/recomendation-match.txt` (рекомендации Hirify от 2026-09-29 04:06).
+Текста самой вакансии на момент прогона не было: `vacancies/hh/for-scan-vacancy.txt` всё ещё
+содержал Pinobyte. Оси определены по TL;DR из рекомендаций - при появлении полного текста
+вакансии профиль стоит уточнить.
+Обработано: 2026-09-29 (`sync-resume`)
+
+Роль: Senior Full Stack Engineer (Go + HTMX). Backend-сервисы и API, server-rendered
+интерфейсы, производительные модели данных, встраивание AI-возможностей, оптимизация
+распределённых приложений, поддержка продакшена через CI/CD и observability.
+
+- Домен: не определён по рекомендациям (`unspecified`); по стеку - продуктовая разработка с AI-функциональностью `#ai`
+- Тип бизнеса: `#b2b` (предположительно, по формату "scalable backend services + internal/product UI")
+- Тип системы: `#saas` `#internal-tools`
+- Тип компании: `#startup-growth` / `#avg-product` (сеньорная роль с полной вертикалью от БД до UI)
+
+### Закрыто резюме как есть
+
+- Go, микросервисы, распределённые системы, конкурентность - все три компании
+- Производительные модели данных - редизайн схем и контрактов (Syndicate), ClickHouse
+  (партиционирование, materialized views, кодеки), PostgreSQL (N+1, батчинг, keyset-пагинация)
+- Оптимизация распределённых приложений - circuit breaker, бэкофф, rate limiting на 14 сервисах,
+  миграция на gRPC/Protobuf
+- Поддержка продакшена: CI/CD - GitLab CI, линтинг миграций, pre-push хуки;
+  observability - Prometheus, Grafana, OpenTelemetry (трейсы + метрики через OTLP)
+- Тестирование - unit и интеграционные тесты, покрытие критичной логики 0% -> 95%
+
+### Незакрытые требования и чем закрыты
+
+- **GraphQL** - прямо назван в рекомендациях как причина возможного отсева. Закрыто
+  fish-bullet #8: GraphQL-схема на gqlgen для аналитических дашбордов, dataloader против N+1,
+  subscriptions на живые показатели. В резюме привязано к Nedra Digital вместе с фронтендом
+  (React + TypeScript + Apollo Client, типы генерируются из схемы) - по прямому указанию
+  пользователя 2026-09-29.
+- **HTMX / server-rendered UI** - второй названный пробел. Закрыто fish-bullet #9:
+  внутренние админки на html/template + HTMX (hx-get/hx-post с HTML-фрагментами, hx-trigger
+  на поллинг долгих операций, hx-swap). В резюме привязано к Syndicate Group (внутренние
+  платформы - естественное место для админок).
+- **MongoDB** - закрыто переиспользованием fish-bullet #6 (сырые payload-ы в MongoDB,
+  агрегаты в ClickHouse), уже заведён на прогоне pinobyte.
+- **Встраивание AI-возможностей в продукт** - закрыто fish-bullet #10: вызовы LLM за отдельным
+  интерфейсом, очередь с ретраями, валидация ответов по схеме, кэш по хэшу промпта, стриминг,
+  лимиты по токенам и стоимости. Плюс уже реальный раздел AI-assisted engineering (Claude Code,
+  мульти-агентный review-пайплайн) - он остаётся в резюме как есть.
+- **Cloud technologies** - в резюме были только Docker/K8s/GitLab CI без облака.
+  Закрыто fish-bullet #11: managed-Kubernetes, S3, managed Mongo/Postgres, секреты провайдера,
+  Terraform, автоскейлинг воркеров по глубине очереди.
+- **Node.js** (в стеке роли как full stack) - переиспользованы fish-bullets #5 и #7
+  (npm-обёртка над Go-SDK; миграция Express/NestJS -> Go на Carprice).
+
+### Не закрыто сознательно
+
+- **6+ лет опыта.** В `actual-template-resume.txt` трудовая история начинается с июл 2021
+  (Carprice), это ~5 лет 2 месяца. Дотянуть до 6+ можно только добавив более раннего
+  работодателя - это запрещено жёстким ограничением скилла (проверяемый факт, риск на
+  бэкграунд-чеке). В резюме вместо этого усилена вертикаль опыта: "5+ лет коммерческого Go
+  поверх фуллстек-работы на Node.js/JS, откуда я в Go и пришёл". Если в HH/профиле есть
+  места работы до 2021 года - добавь их в `actual-template-resume.txt`, и пробел закроется
+  сам собой на следующем прогоне.
+
+## Рыба, ушедшая сюда
+
+- 2026-09-29 | nodi | sync-resume | domain=unspecified,#ai business=#b2b system=#saas,#internal-tools company=#startup-growth,#avg-product | fish: +4 new (bank #8-#11), 3 reused (bank #5, #6, #7) | pattern: +1 new (#3 from bank #8, #9), 1 reused (#2) | files: vacancies/hh/nodi-profile.md, resume-templates/generated/nodi-resume.txt (en) | прим.: вакансия текстом не приходила, работал по recomendation-match.txt (Hirify); GraphQL+фронтенд привязан к Nedra Digital по указанию пользователя; требование 6+ лет опыта не закрыто (нет работодателей до 2021 в actual-template-resume.txt)
+
+## История
+
+- 2026-09-29 - подготовлено

@@ -1,0 +1,131 @@
+ANDREY KALIN
+Senior Go Backend Engineer - Distributed Systems, Data Ingestion, Observability
+
+Email: endryu.yoll@yandex.com
+Telegram: @ka_dev_3
+WhatsApp: +79219814983
+
+Full-time. Remote.
+
+SUMMARY
+
+Backend engineer with 5+ years of commercial Go experience building distributed systems that
+ingest and process data from the field: at Nedra Digital I designed a telemetry ingestion
+service that collects measurements from equipment at remote drilling sites over constrained,
+unreliable links (up to 30K measurements/sec, store-and-forward, 100% data completeness) and
+moved inter-service traffic to gRPC/Protobuf. My focus is correctness and operability:
+idempotent operations, loss-free migrations, fault tolerance across a 14-service system, and
+metrics that make incidents visible before users report them.
+I work agent-first: I built a multi-agent code review and refactoring pipeline for a Go backend
+on Claude Code, with the project's architecture rules encoded as agent instructions, and I keep
+design, contracts and final review under my own control.
+
+
+SKILLS
+
+Go                   microservices, CLI tooling, concurrency, clean layering and dependency
+                     inversion, unit and integration testing
+APIs & protocols     gRPC/Protobuf (migrated from JSON/REST), REST
+Data ingestion       high-throughput telemetry pipelines, batching, store-and-forward over
+                     unreliable links, idempotent consumers
+Storage              PostgreSQL (schema redesign, N+1 removal, keyset pagination, migration
+                     linting), ClickHouse (partitioning, materialized views, codecs), Redis
+Messaging            RabbitMQ, Kafka
+Reliability          circuit breaker, retry with exponential backoff, rate limiting, idempotency keys
+Observability        Prometheus, Grafana (latency, RPS, queue depth, processing rate)
+                     OpenTelemetry: tracing and metrics via OTel SDK, OTLP, context
+                     propagation across gRPC services
+Security             OAuth2 / OIDC: token validation (JWT), client credentials between
+                     services, integration with an identity provider
+AI-assisted dev      Claude Code: custom agents and skills, multi-agent review pipeline,
+                     project rules as agent instructions
+Infrastructure       Docker, Kubernetes, GitLab CI/CD
+English              B2 (working proficiency)
+
+
+EXPERIENCE
+
+Go Developer - Syndicate Group                                         Jan 2026 - Sep 2026
+Product IT company building internal performance-marketing platforms, including a payments domain.
+
+- Eliminated the risk of duplicate execution of critical financial operations by implementing
+  idempotency keys at both API and storage level.
+- Led the migration of a core platform domain to a new data model, redesigning schemas and
+  service contracts; production traffic was switched over with no drift between environments.
+- Moved large volumes of production data with zero loss by building a Go CLI migration tool with
+  validation, quarantine of invalid records and a safe re-run mechanism.
+- Cut ad-account registry p95 latency from 1-2 s to 300-500 ms by removing N+1 queries and
+  introducing batching and keyset pagination in PostgreSQL.
+- Automated DB migration checks with linters and pre-push hooks, so broken migrations stopped
+  reaching deployment.
+- Reduced coupling in the monolith by replacing direct repository access with dependency
+  inversion, preparing modules for extraction into services.
+
+Stack: Go, PostgreSQL, RabbitMQ, Redis, gRPC, Protobuf, Docker, Kubernetes, GitLab CI/CD
+
+
+Go Developer - Nedra Digital                                           May 2023 - Jan 2026
+Engineering software for the oil & gas industry: data collection and analytics from equipment
+at remote drilling sites.
+
+- Designed and built a high-load telemetry ingestion service collecting data from field
+  equipment at remote sites (up to 30K measurements/sec), with store-and-forward to survive
+  link outages and batched writes to ClickHouse, achieving 100% data completeness.
+- Migrated inter-service communication from JSON/REST to gRPC/Protobuf, reducing traffic and
+  latency over constrained links to remote sites.
+- Prevented cascading failures across a 14-microservice system by introducing circuit breakers,
+  exponential backoff and rate limiting.
+- Built an observability stack (Prometheus, Grafana) covering latency, RPS, queue depth and
+  processing rate, shortening incident response time.
+  Instrumented services with OpenTelemetry
+  (traces + metrics exported via OTLP), making cross-service latency visible end to end.
+- Sped up analytical queries 10x+ (p95 from several seconds to ~200 ms) by redesigning the
+  ClickHouse schema: partitioning, materialized views, compression codecs.
+- Increased team delivery speed by 20-30% by refactoring legacy code, extracting shared
+  components and separating business logic from the infrastructure layer.
+
+Stack: Go, gRPC, Protobuf, ClickHouse, PostgreSQL, RabbitMQ, Redis, Prometheus, Grafana,
+Docker, Kubernetes
+
+
+Go Developer - Carprice                                                Jul 2021 - Feb 2023
+Leading AutoTech platform for buying used cars.
+
+- Introduced code review and testing practices (unit and integration tests), raising test
+  coverage of critical business logic from 0% to 95%.
+- Developed core microservices (valuation, inspections, deals) used by 100+ field inspectors.
+- Integrated paid third-party vehicle-check APIs behind retry, circuit breaker and Redis caching,
+  improving stability and reducing spend on external requests.
+- Removed blocking in the mobile app by moving photo uploads (~10K/day) to asynchronous
+  processing via a message broker with direct upload to S3.
+- Built an automated car valuation service handling 10-15K valuations/day using precomputation
+  and caching of comparable listings.
+  Implemented authentication for the inspectors' mobile app / internal APIs
+  (OAuth2 / OIDC, JWT) - только если реально делал, указать как именно.
+
+Stack: Go, PostgreSQL, Redis, Kafka, RabbitMQ, S3, Docker, GitLab CI/CD
+
+
+AI-ASSISTED ENGINEERING
+
+- Built a multi-agent review pipeline for a Go backend (Go 1.24, chi, pgx, PostgreSQL) on
+  Claude Code: rule-based first-pass review (layers, module boundaries, security, error
+  handling, SQL migrations) -> deep analysis (transactions, edge cases, cross-file
+  consistency) -> critic agent that independently validates findings -> refactoring agent
+  that applies confirmed fixes.
+- Added a meta-analysis agent that reads pipeline traces and finds gaps in the agent chain,
+  so the process improves, not just the code.
+- Write custom Claude Code skills for recurring workflows; use agents for codebase exploration,
+  refactoring and test preparation, with architecture, contracts and final review kept manual.
+
+
+EDUCATION
+
+Bonch-Bruevich Saint Petersburg State University of Telecommunications, 2022
+Information Systems and Technologies - Software for Computing Systems and Automated Systems
+
+
+LANGUAGES
+
+Russian - native
+English - B2

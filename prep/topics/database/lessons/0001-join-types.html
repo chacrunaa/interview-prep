@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Виды JOIN и их роль в БД</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Joins</p>
+  <h1>Виды JOIN и их роль в БД</h1>
+  <p class="lede">Одна победа этого урока: ты сможешь на собесе не просто перечислить виды JOIN, а на конкретных данных сказать, сколько строк вернёт каждый — и не перепутать LEFT с RIGHT под давлением.</p>
+
+  <h2>Аналогия</h2>
+  <p>Представь два бумажных списка. Первый — <code>users</code>: id, имя. Второй — <code>orders</code>: id заказа, user_id (чей это заказ), сумма. Данные специально разложены по двум спискам, а не в одном большом — это называется <b>нормализация</b>: имя пользователя не дублируется в каждой строке заказа.</p>
+  <p>Но чтобы ответить на вопрос "какие заказы у Ани?", нужно взять оба листа и физически сопоставить строки по user_id — приложить лист заказов к листу пользователей и посмотреть, что совпало. Вот это сопоставление двух листов по общему полю — и есть <b>JOIN</b>. Его роль в БД: собрать обратно то, что было разложено по разным таблицам ради экономии места и целостности данных.</p>
+
+  <h2>Сквозной пример</h2>
+  <p>Дальше все JOIN считаем на одних и тех же двух таблицах — держи их перед глазами, дальше будет только "сколько строк получилось и откуда".</p>
+
+  <table>
+    <tr><th colspan="2">users</th></tr>
+    <tr><th>id</th><th>name</th></tr>
+    <tr><td>1</td><td>Аня</td></tr>
+    <tr><td>2</td><td>Борис</td></tr>
+    <tr><td>3</td><td>Вика</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="3">orders</th></tr>
+    <tr><th>id</th><th>user_id</th><th>amount</th></tr>
+    <tr><td>101</td><td>1</td><td>500</td></tr>
+    <tr><td>102</td><td>1</td><td>300</td></tr>
+    <tr><td>103</td><td>2</td><td>700</td></tr>
+    <tr><td>104</td><td>9</td><td>150</td></tr>
+  </table>
+
+  <p class="sidenote">Заметь заранее две "проблемные" строки: у Вики (id 3) нет ни одного заказа, а у заказа 104 указан user_id 9 — такого пользователя вообще нет (например, его удалили). Именно на них видна разница между видами JOIN.</p>
+
+  <h2>Виды JOIN — на этих же данных</h2>
+
+  <h3>INNER JOIN</h3>
+  <p>Оставляем только строки, где совпадение нашлось в обеих таблицах.</p>
+  <pre><code>SELECT u.name, o.amount
+FROM users u
+INNER JOIN orders o ON o.user_id = u.id;</code></pre>
+  <table>
+    <tr><th>name</th><th>amount</th></tr>
+    <tr><td>Аня</td><td>500</td></tr>
+    <tr><td>Аня</td><td>300</td></tr>
+    <tr><td>Борис</td><td>700</td></tr>
+  </table>
+  <p><b>3 строки.</b> Вика пропала (нет заказов), заказ 104 пропал (нет пользователя 9).</p>
+
+  <div id="quiz-1"></div>
+
+  <h3>LEFT (OUTER) JOIN</h3>
+  <p>Берём <b>все</b> строки левой таблицы (<code>users</code>), даже без пары справа — тогда поля <code>orders</code> становятся <code>NULL</code>.</p>
+  <pre><code>SELECT u.name, o.amount
+FROM users u
+LEFT JOIN orders o ON o.user_id = u.id;</code></pre>
+  <table>
+    <tr><th>name</th><th>amount</th></tr>
+    <tr><td>Аня</td><td>500</td></tr>
+    <tr><td>Аня</td><td>300</td></tr>
+    <tr><td>Борис</td><td>700</td></tr>
+    <tr><td>Вика</td><td>NULL</td></tr>
+  </table>
+  <p><b>4 строки.</b> Вика вернулась с NULL вместо суммы. Заказ 104 по-прежнему пропал — он же не из левой таблицы. Это самый частый JOIN на практике: "покажи всех пользователей, и если есть заказы — покажи их тоже".</p>
+
+  <h3>RIGHT (OUTER) JOIN</h3>
+  <p>Зеркало LEFT: все строки правой таблицы (<code>orders</code>), даже без пользователя.</p>
+  <pre><code>SELECT u.name, o.amount
+FROM users u
+RIGHT JOIN orders o ON o.user_id = u.id;</code></pre>
+  <table>
+    <tr><th>name</th><th>amount</th></tr>
+    <tr><td>Аня</td><td>500</td></tr>
+    <tr><td>Аня</td><td>300</td></tr>
+    <tr><td>Борис</td><td>700</td></tr>
+    <tr><td>NULL</td><td>150</td></tr>
+  </table>
+  <p><b>4 строки.</b> Теперь наоборот: вылез "ничейный" заказ 104 (NULL вместо имени), а Вика пропала — она же не в правой таблице. На практике RIGHT JOIN встречается редко: то же самое можно получить LEFT JOIN, просто поменяв таблицы местами в <code>FROM</code>. Спрашивают в основном чтобы проверить, понимаешь ли ты эту симметрию, а не потому что RIGHT JOIN часто пишут в реальном коде.</p>
+
+  <div id="quiz-2"></div>
+
+  <h3>FULL OUTER JOIN</h3>
+  <p>Все строки с обеих сторон разом: и "пользователи без заказов", и "заказы без пользователя".</p>
+  <pre><code>SELECT u.name, o.amount
+FROM users u
+FULL OUTER JOIN orders o ON o.user_id = u.id;</code></pre>
+  <table>
+    <tr><th>name</th><th>amount</th></tr>
+    <tr><td>Аня</td><td>500</td></tr>
+    <tr><td>Аня</td><td>300</td></tr>
+    <tr><td>Борис</td><td>700</td></tr>
+    <tr><td>Вика</td><td>NULL</td></tr>
+    <tr><td>NULL</td><td>150</td></tr>
+  </table>
+  <p><b>5 строк</b> — буквально сумма "проблемных" строк LEFT и RIGHT. Практическое применение: искать рассинхрон между таблицами разом с обеих сторон (например, найти и пользователей без заказов, и "осиротевшие" заказы — что по-хорошему вообще не должно происходить при правильных FOREIGN KEY).</p>
+
+  <h3>CROSS JOIN</h3>
+  <p>Без условия совпадения вообще — каждая строка левой таблицы соединяется с <b>каждой</b> строкой правой.</p>
+  <pre><code>SELECT u.name, o.amount
+FROM users u
+CROSS JOIN orders o;</code></pre>
+  <p>У нас 3 пользователя и 4 заказа → результат будет <b>3 × 4 = 12 строк</b>, включая бессмысленные пары вроде "Вика — заказ 101" (которого у неё нет). Осознанно CROSS JOIN используют редко (например, сгенерировать все комбинации "размер × цвет" товара), но часто он возникает <b>случайно</b> — если забыть условие <code>ON</code>. Тогда 3 × 4 = 12 может незаметно стать 100 000 × 100 000 на реальных таблицах, и запрос "подвесит" базу.</p>
+
+  <div id="quiz-3"></div>
+
+  <h3>Self-Join</h3>
+  <p>Таблица соединяется сама с собой через два разных алиаса. Другой пример данных — сотрудники и их руководители в одной и той же таблице:</p>
+  <table>
+    <tr><th colspan="3">employees</th></tr>
+    <tr><th>id</th><th>name</th><th>manager_id</th></tr>
+    <tr><td>1</td><td>Олег (CEO)</td><td>NULL</td></tr>
+    <tr><td>2</td><td>Настя</td><td>1</td></tr>
+    <tr><td>3</td><td>Дима</td><td>1</td></tr>
+  </table>
+  <pre><code>SELECT e.name AS employee, m.name AS manager
+FROM employees e
+LEFT JOIN employees m ON e.manager_id = m.id;</code></pre>
+  <table>
+    <tr><th>employee</th><th>manager</th></tr>
+    <tr><td>Олег (CEO)</td><td>NULL</td></tr>
+    <tr><td>Настя</td><td>Олег (CEO)</td></tr>
+    <tr><td>Дима</td><td>Олег (CEO)</td></tr>
+  </table>
+  <p>Здесь <code>employees</code> — одна и та же таблица, просто в запросе она "притворяется" двумя разными (<code>e</code> — сотрудник, <code>m</code> — его руководитель). LEFT JOIN тут не случаен: без него у CEO (нет руководителя) строка бы пропала, как Вика выше.</p>
+
+  <div id="quiz-4"></div>
+
+  <div class="callout">
+    <b>Частая ошибка на собесе.</b> Использовать LEFT JOIN, а потом писать <code>WHERE o.amount > 400</code> и удивляться, что Вика (и вообще все NULL-строки) исчезла из результата — "как будто это был INNER JOIN". Причина: <code>WHERE</code> фильтрует строки <b>после</b> соединения, а <code>NULL &gt; 400</code> в SQL — это не false, а "неизвестно", и такая строка не проходит фильтр. Если хочешь сохранить строки без совпадения, условие по правой таблице переносят в <code>ON</code>, а не в <code>WHERE</code>.
+  </div>
+
+  <div id="quiz-5"></div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_03_joins_set_operations.md</code> (там же — алгоритмы физического выполнения JOIN: Nested Loop / Hash / Merge, и разница UNION vs UNION ALL, это следующий логичный шаг); официальный <a href="https://www.postgresql.org/docs/current/tutorial-join.html">PostgreSQL Tutorial — Joins Between Tables</a>; справочник синтаксиса — <a href="https://www.postgresql.org/docs/current/queries-table-expressions.html">PostgreSQL Docs — Table Expressions</a>.</p>
+
+  <div class="ask-teacher">Если что-то из этого осталось непонятным — просто спроси, разберём отдельно.</div>
+
+  <div class="nav-links">
+    <a href="../reference/0001-join-types.html">Шпаргалка по теме →</a>
+    <a href="0002-normalization.html">Нормализация →</a>
+  </div>
+
+</div>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+new Quiz(document.getElementById('quiz-1'), {
+  prompt: 'На наших данных: сколько строк вернёт INNER JOIN users и orders по user_id = id?',
+  options: ['3 строки', '4 строки', '5 строк'],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — Аня-500, Аня-300, Борис-700. Вика и заказ 104 без пары отсеиваются.',
+    incorrect: 'Неверно. INNER JOIN оставляет только совпавшие пары: Аня-500, Аня-300, Борис-700 — это 3 строки.'
+  }
+});
+new Quiz(document.getElementById('quiz-2'), {
+  prompt: 'В результате RIGHT JOIN users и orders (по user_id = id) появилась строка с name = NULL и amount = 150. Откуда она взялась?',
+  options: [
+    'Это заказ 104 — у него user_id = 9, такого пользователя нет',
+    'Это Вика — у неё нет заказов',
+    'Ошибка в данных, такого быть не должно'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — RIGHT JOIN сохраняет все строки правой таблицы (orders), даже без пары слева.',
+    incorrect: 'Неверно. NULL в имени, а не в сумме — значит "потерялась" левая сторона (пользователь), а это как раз заказ 104 с несуществующим user_id 9.'
+  }
+});
+new Quiz(document.getElementById('quiz-3'), {
+  prompt: 'В FROM забыли написать условие ON у JOIN между таблицей на 500 строк и таблицей на 1000 строк. Сколько строк получится в результате?',
+  options: ['1500 строк (500 + 1000)', '500 000 строк (500 × 1000)', '1000 строк (по большей таблице)'],
+  correctIndex: 1,
+  feedback: {
+    correct: 'Верно — без условия соединения это CROSS JOIN: каждая строка левой таблицы соединяется с каждой строкой правой, N × M.',
+    incorrect: 'Неверно. Без ON JOIN превращается в CROSS JOIN — декартово произведение, то есть N × M, а не сумма и не максимум.'
+  }
+});
+new Quiz(document.getElementById('quiz-4'), {
+  prompt: 'В self-join сотрудников использовали LEFT JOIN, а не INNER JOIN. Что бы пропало из результата при INNER JOIN?',
+  options: [
+    'Строка CEO (у него manager_id = NULL, пары не найдётся)',
+    'Ничего, результат был бы тот же',
+    'Строки Насти и Димы'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — у CEO нет руководителя (manager_id = NULL), INNER JOIN не найдёт пару и выкинет его строку целиком.',
+    incorrect: 'Неверно. INNER JOIN отбрасывает несовпавшие строки — а у CEO как раз нет пары по manager_id, значит он бы исчез.'
+  }
+});
+new Quiz(document.getElementById('quiz-5'), {
+  prompt: 'LEFT JOIN users и orders, затем в WHERE дописали "o.amount > 400". Что произойдёт со строкой Вики (amount = NULL)?',
+  options: [
+    'Останется, просто amount будет показан как NULL',
+    'Исчезнет из результата, потому что NULL > 400 не считается истиной',
+    'Запрос упадёт с ошибкой сравнения с NULL'
+  ],
+  correctIndex: 1,
+  feedback: {
+    correct: 'Верно — WHERE фильтрует после JOIN, а NULL > 400 не true, поэтому строка отсеивается, и LEFT JOIN на практике превращается в INNER JOIN.',
+    incorrect: 'Неверно. Ошибки не будет, но и не останется: NULL > 400 не выполняется, строка не проходит WHERE и пропадает из результата.'
+  }
+});
+</script>
+</body>
+</html>

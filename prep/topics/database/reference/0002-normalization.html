@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: нормализация</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Design · Шпаргалка</p>
+  <h1>Нормализация — шпаргалка</h1>
+
+  <p><b>Роль нормализации:</b> разложить один "файл на всё" по таблицам так, чтобы каждый факт хранился один раз — тогда изменение факта не может рассинхронизироваться.</p>
+
+  <table>
+    <tr><th>Форма</th><th>Условие</th><th>Чинит</th></tr>
+    <tr><td>1NF</td><td>Ячейки атомарны, нет списков в одном поле</td><td>Неделимость данных</td></tr>
+    <tr><td>2NF</td><td>1NF + поле зависит от всего составного ключа</td><td>Частичную зависимость от части ключа</td></tr>
+    <tr><td>3NF</td><td>2NF + нет зависимостей через другое неключевое поле</td><td>Транзитивную зависимость</td></tr>
+    <tr><td>BCNF</td><td>Усиленная 3NF: слева от X → Y всегда суперключ</td><td>Редкие edge-case зависимости</td></tr>
+  </table>
+
+  <table>
+    <tr><th>Аномалия</th><th>Суть</th></tr>
+    <tr><td>Insert</td><td>Нельзя добавить факт без связанного факта (клиента без заказа)</td></tr>
+    <tr><td>Update</td><td>Факт продублирован — обновили не везде, данные разъехались</td></tr>
+    <tr><td>Delete</td><td>Удалили одно — случайно стёрли и логически не связанное другое</td></tr>
+  </table>
+
+  <div class="callout">
+    Денормализация (author_name в comments, likes_count вместо COUNT(*)) — не ошибка, а осознанный компромисс "скорость чтения вместо чистоты схемы" в высоконагруженных системах.
+  </div>
+
+  <p class="source-rec">Полный урок: <a href="../lessons/0002-normalization.html">lessons/0002-normalization.html</a>. Источник: <code>InterviewPro/docs/questions/database/topic_07_database_design_normalization.md</code>.</p>
+
+</div>
+</body>
+</html>

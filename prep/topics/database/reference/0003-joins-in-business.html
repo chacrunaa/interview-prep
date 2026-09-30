@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: выбор JOIN под задачу и его опасности</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Joins · Шпаргалка</p>
+  <h1>JOIN под задачу — шпаргалка</h1>
+
+  <p><b>Два вопроса выбирают JOIN:</b> 1) про кого строка в результате — та таблица главная; 2) нужны ли записи без пары — да значит LEFT, нет значит INNER.</p>
+
+  <table>
+    <tr><th>Бизнес-формулировка</th><th>Что брать</th></tr>
+    <tr><td>«…по каждому клиенту, включая тех, кто не покупал»</td><td>LEFT JOIN + <code>COUNT(o.id)</code> + <code>COALESCE(SUM, 0)</code></td></tr>
+    <tr><td>«только те, кто ни разу не…»</td><td>LEFT JOIN + <code>WHERE o.id IS NULL</code>, либо <code>NOT EXISTS</code></td></tr>
+    <tr><td>«выручка по менеджерам за месяц»</td><td>INNER JOIN — нет факта, нет строки</td></tr>
+    <tr><td>«сверь наш каталог с прайсом поставщика»</td><td>FULL OUTER JOIN, либо <code>EXCEPT</code> для одной стороны</td></tr>
+    <tr><td>«дашборд со всеми месяцами, включая пустые»</td><td>CROSS JOIN с календарём + LEFT JOIN фактов</td></tr>
+    <tr><td>«сотрудник и его руководитель»</td><td>self-join через два алиаса, LEFT (у главного нет руководителя)</td></tr>
+  </table>
+
+  <h2>Опасности — по убыванию важности</h2>
+
+  <table>
+    <tr><th>Опасность</th><th>Как проявляется</th><th>Что делать</th></tr>
+    <tr><td><b>Размножение строк (fan-out)</b></td><td>Связь один-ко-многим дублирует левую строку; <code>SUM</code> и <code>COUNT</code> завышаются. Заказ 500 ₽ с 3 позициями даёт 1500 ₽</td><td>Агрегировать <b>до</b> соединения — подзапросом или CTE. <code>SUM(DISTINCT)</code> не спасает</td></tr>
+    <tr><td>LEFT стал INNER</td><td>Условие по правой таблице в <code>WHERE</code> отсекает NULL-строки, записи без пары исчезают</td><td>Переносить условие в <code>ON</code></td></tr>
+    <tr><td><code>COUNT(*)</code> при LEFT JOIN</td><td>Даёт 1 вместо 0 — строка-то существует, просто с NULL</td><td>Считать <code>COUNT(o.id)</code></td></tr>
+    <tr><td>Забытое условие</td><td>Декартово произведение N × M кладёт базу</td><td>Проверять, что у каждого JOIN есть <code>ON</code></td></tr>
+    <tr><td>Индекс не работает</td><td>Соединение колонок разных типов; функция над колонкой в <code>ON</code></td><td>Приводить типы в схеме, не оборачивать ключ в функцию</td></tr>
+    <tr><td>N+1 в коде</td><td>1000 клиентов = 1001 запрос из ORM</td><td>Один JOIN, но помнить про fan-out и схлопывать в коде</td></tr>
+  </table>
+
+  <h2>Физические алгоритмы (для вопроса «как JOIN выполняется»)</h2>
+
+  <table>
+    <tr><th>Алгоритм</th><th>Когда</th><th>Риск</th></tr>
+    <tr><td>Nested Loop</td><td>Левая таблица мелкая, справа индекс по ключу</td><td>Без индекса — полный перебор</td></tr>
+    <tr><td>Hash Join</td><td>Большие объёмы, соединение по <code>=</code></td><td>Не влезло в память — слив на диск</td></tr>
+    <tr><td>Merge Join</td><td>Обе стороны отсортированы по ключу</td><td>Нет сортировки — придётся сортировать</td></tr>
+  </table>
+
+  <div class="callout">
+    Формулировка для собеса: «Главный риск JOIN — не скорость, а корректность: связь один-ко-многим размножает строки и агрегаты начинают врать. Поэтому агрегирую до соединения, а условия по правой таблице в LEFT JOIN держу в ON, а не в WHERE.»
+  </div>
+
+  <p class="source-rec">Источник: <code>InterviewPro/docs/questions/database/topic_03_joins_set_operations.md</code>; <a href="https://www.postgresql.org/docs/current/tutorial-join.html">PostgreSQL Tutorial — Joins</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0003-joins-in-business.html">← К уроку</a>
+    <a href="0001-join-types.html">Шпаргалка по видам JOIN →</a>
+  </div>
+
+</div>
+</body>
+</html>

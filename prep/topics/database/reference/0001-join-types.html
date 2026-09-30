@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: виды JOIN</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Joins · Шпаргалка</p>
+  <h1>Виды JOIN — шпаргалка</h1>
+
+  <p><b>Роль JOIN в БД:</b> собрать обратно данные, разнесённые по нормализованным таблицам, сопоставив строки по ключу.</p>
+
+  <table>
+    <tr><th>JOIN</th><th>Что возвращает</th><th>На примере (3 users / 4 orders, 1 без заказов, 1 заказ-сирота)</th></tr>
+    <tr><td>INNER</td><td>Только строки, где есть совпадение с обеих сторон</td><td>3 строки</td></tr>
+    <tr><td>LEFT</td><td>Все строки левой таблицы; справа NULL, если пары нет</td><td>4 строки</td></tr>
+    <tr><td>RIGHT</td><td>Зеркало LEFT — все строки правой таблицы</td><td>4 строки</td></tr>
+    <tr><td>FULL OUTER</td><td>Все строки с обеих сторон; NULL там, где нет пары</td><td>5 строк</td></tr>
+    <tr><td>CROSS</td><td>Декартово произведение: N × M строк, без условия ON</td><td>12 строк (3 × 4)</td></tr>
+    <tr><td>SELF</td><td>Таблица соединяется сама с собой через два алиаса (иерархии)</td><td>— (другой пример: employees/manager_id)</td></tr>
+  </table>
+
+  <div class="callout">
+    Ловушка: условие по правой таблице в <code>WHERE</code> (а не в <code>ON</code>) превращает LEFT JOIN в фактический INNER JOIN — NULL-строки не проходят фильтр (<code>NULL &gt; 400</code> не true).
+  </div>
+
+  <p class="source-rec">Полный урок: <a href="../lessons/0001-join-types.html">lessons/0001-join-types.html</a>. Источники: <code>InterviewPro/docs/questions/database/topic_03_joins_set_operations.md</code>, <a href="https://www.postgresql.org/docs/current/tutorial-join.html">PostgreSQL Tutorial — Joins</a>.</p>
+
+</div>
+</body>
+</html>

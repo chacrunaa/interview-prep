@@ -1,0 +1,122 @@
+ANDREY KALIN
+Go Backend Developer - Fintech / High-load Microservices
+
+Email: endryu.yoll@yandex.com
+Telegram: @ka_dev_3
+WhatsApp: +7 921 981 4983
+
+Full-time. Remote / hybrid / on-site.
+
+
+SUMMARY
+
+Backend developer with 5+ years of commercial Go experience building high-load microservices.
+In fintech I focused on payment correctness: I built idempotency for critical financial operations
+to eliminate double charges and migrated production data with zero loss. I've designed services
+that ingest up to 30K events/sec, cut API and query latency by 3-10x through database
+optimization, and integrated unreliable third-party APIs behind retries, circuit breakers and
+caching. I own tasks end to end, from data model and API contracts to production rollout
+and monitoring.
+
+
+CORE SKILLS
+
+Fintech & payments   idempotency keys (API + storage level), double-charge prevention,
+                     safe migration of critical data
+High-load            30K events/sec ingestion, batching, store-and-forward, async processing,
+                     10-15K business operations/day
+Database performance PostgreSQL query optimization (N+1 removal, batching, keyset pagination),
+                     ClickHouse schema design (partitioning, materialized views, codecs)
+Fault tolerance      circuit breaker, retry with exponential backoff, rate limiting,
+                     cascading-failure prevention across 14 microservices
+External APIs        resilient third-party integrations, Redis caching to cut paid API calls
+Architecture         microservices, gRPC/Protobuf, event-driven messaging (Kafka, RabbitMQ),
+                     monolith decoupling via dependency inversion
+Observability        Prometheus, Grafana: latency, RPS, queue and throughput metrics
+Quality              code review culture, unit and integration tests, migration linting in CI
+
+
+EXPERIENCE
+
+
+Syndicate Group - Go Developer
+Jan 2026 - Sep 2026 | Moscow
+Product IT company building internal performance-marketing platforms, including a payments domain.
+
+- Eliminated the risk of double charges in the payments domain by implementing idempotency
+  for critical financial operations with idempotency keys at both API and storage level.
+- Led the migration of a core platform domain to a new data model, redesigning schemas and
+  service contracts; production traffic was switched over smoothly with no environment drift.
+- Moved large volumes of production data with zero loss by building a Go CLI migration tool
+  with validation, quarantine of bad records and a re-run mechanism.
+- Cut ad-account registry p95 latency from 1-2 s to 300-500 ms by removing N+1 queries,
+  introducing batching and keyset pagination in PostgreSQL.
+- Reduced coupling in the monolith by replacing direct repository access with dependency
+  inversion, preparing modules for extraction into microservices.
+- Automated DB migration checks with linters and pre-push hooks, stopping migration errors
+  from reaching deployment and keeping developer databases in sync.
+
+Stack: Go, PostgreSQL, RabbitMQ, Redis, gRPC, Protobuf, REST, Docker, Kubernetes, GitLab CI/CD
+
+
+Nedra Digital - Go Developer
+May 2023 - Jan 2026 | Saint Petersburg
+Engineering software for the oil & gas industry: data collection and analytics from remote sites.
+
+- Designed and built a high-load telemetry ingestion service (up to 30K measurements/sec)
+  with store-and-forward and batched writes to ClickHouse, achieving 100% data completeness.
+- Sped up analytical queries 10x+ (p95 from several seconds to ~200 ms) by redesigning the
+  ClickHouse schema: partitioning, materialized views, compression codecs.
+- Prevented cascading failures across a 14-microservice system by introducing circuit breakers,
+  exponential backoff and rate limiting.
+- Migrated inter-service communication from JSON/REST to gRPC/Protobuf, reducing traffic
+  and latency over constrained links to remote sites.
+- Built an observability stack (Prometheus, Grafana) covering latency, RPS, queue depth and
+  processing rate, shortening incident response time.
+- Increased team delivery speed by 20-30% by refactoring legacy code, extracting shared
+  components and separating business logic from the infrastructure layer.
+
+Stack: Go, PostgreSQL, ClickHouse, RabbitMQ, Redis, gRPC, Protobuf, Prometheus, Grafana,
+Docker, Kubernetes
+
+
+Carprice - Go Developer
+Jul 2021 - Feb 2023 | Moscow
+Leading AutoTech platform for buying used cars.
+
+- Developed core microservices (valuation, inspections, deals) used by a network of
+  100+ field inspectors.
+- Integrated paid third-party vehicle-check APIs using retry, circuit breaker and Redis caching,
+  improving stability and reducing spend on external requests.
+- Built an automated car valuation service handling 10-15K valuations/day using precomputation
+  and caching of comparable listings.
+- Removed blocking in the mobile app by moving photo uploads (~10K/day) to asynchronous
+  processing via a message broker with direct upload to S3.
+- Reduced dispatchers' manual work 3x with an automatic inspection assignment service based
+  on geolocation and inspector workload.
+- Introduced code review and testing practices, raising test coverage of critical business logic
+  from 0% to 95%.
+
+Stack: Go, PostgreSQL, Redis, Kafka, REST, GraphQL, S3, Docker, GitLab CI/CD
+
+
+TECHNICAL SKILLS
+
+Language        Go
+Databases       PostgreSQL, ClickHouse, Redis, S3
+Messaging       Kafka, RabbitMQ
+APIs            gRPC, Protobuf, REST, GraphQL, SOAP
+Infrastructure  Docker, Kubernetes, GitLab CI/CD, Git
+Observability   Prometheus, Grafana
+
+
+EDUCATION
+
+Bonch-Bruevich Saint Petersburg State University of Telecommunications, 2022
+Information Systems and Technologies - Software for Computing Systems and Automated Systems
+
+
+LANGUAGES
+
+Russian - native
+English - B2 (upper-intermediate)

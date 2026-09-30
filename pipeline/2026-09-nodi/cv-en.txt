@@ -1,0 +1,180 @@
+ANDREY KALIN
+Senior Full Stack Engineer - Go, GraphQL, HTMX, Distributed Systems
+
+Email: endryu.yoll@yandex.com
+Telegram: @ka_dev_3
+WhatsApp: +84888147284
+
+Full-time. Remote.
+
+SUMMARY
+
+Full stack engineer with 5+ years of commercial Go on top of the Node.js/JavaScript full stack
+work I came into Go from, so I own features end to end: data model, service, API and the
+interface on top of it. On the API side I replaced a spread of REST endpoints with a single
+GraphQL schema (gqlgen) for analytics dashboards - dataloaders against N+1, subscriptions for
+live values, depth and complexity limits so one query cannot take the backend down - and wrote
+the frontend against it myself (React + TypeScript, Apollo Client, types generated from the
+schema). For internal tooling I do the opposite on purpose: server-rendered UI on html/template
+plus HTMX, HTML fragments instead of JSON, no separate frontend build to maintain.
+Data models are where I spend the most care: schema and contract redesigns switched over with no
+drift between environments, MongoDB for semi-structured raw payloads and ClickHouse for
+aggregates, p95 latency cut from 1-2 s to 300-500 ms by removing N+1 and moving to batching and
+keyset pagination. Production support is part of the job, not a separate team: OpenTelemetry
+traces and metrics, Prometheus/Grafana dashboards, CI with linted migrations and a health gate
+on rollout. I also ship AI features and work agent-first myself - LLM calls behind a swappable
+interface with queueing, schema-validated responses, prompt-hash caching and per-client cost
+limits, and a multi-agent code review pipeline I built on Claude Code for a Go backend.
+
+
+SKILLS
+
+Go                   microservices and monoliths, CLI tooling, concurrency, clean layering and
+                     dependency inversion, unit and integration testing
+APIs                 GraphQL (gqlgen: schema design, resolvers, dataloaders, subscriptions,
+                     depth/complexity limits, codegen for the client), gRPC/Protobuf
+                     (migrated from JSON/REST), REST, SDKs generated from proto with semantic
+                     versioning and tagged distribution
+Frontend             HTMX + html/template server-rendered UI (hx-get/hx-post returning HTML
+                     fragments, hx-trigger polling, hx-swap partial updates),
+                     React + TypeScript with Apollo Client against a GraphQL schema,
+                     Node.js (Express, NestJS - legacy backend I owned and migrated to Go)
+Data modelling       PostgreSQL (schema and contract redesign, N+1 removal, batching, keyset
+                     pagination, migration linting), MongoDB (semi-structured payloads,
+                     flexible schema, TTL), ClickHouse (partitioning, materialized views,
+                     codecs), Redis
+Messaging            Kafka, RabbitMQ
+AI in production     LLM calls behind a swappable provider interface, queued with retries and
+                     timeouts, schema-validated responses, prompt-hash caching, streaming,
+                     per-client token and cost limits
+Reliability          circuit breaker, retry with exponential backoff and retry budgets,
+                     rate limiting, idempotency keys, graceful degradation
+Observability        Prometheus, Grafana (latency, RPS, queue depth, error classes),
+                     OpenTelemetry: traces and metrics via OTel SDK and OTLP, context
+                     propagation across services; pprof for CPU/heap/goroutines
+Cloud & CI/CD        managed Kubernetes, S3, managed PostgreSQL and MongoDB, provider secret
+                     storage, Terraform-described environments, GitLab CI with automated
+                     migrations and a health gate on rollout, Docker
+AI-assisted dev      Claude Code: custom agents and skills, multi-agent review pipeline,
+                     project rules as agent instructions
+English              B2 (working proficiency)
+
+
+EXPERIENCE
+
+Go Developer - Syndicate Group                                         Jan 2026 - Sep 2026
+Product IT company building internal performance-marketing platforms, including a payments domain.
+
+- Built the internal operator interfaces without an SPA: server-rendered UI on html/template
+  plus HTMX - hx-get/hx-post returning HTML fragments instead of JSON, hx-trigger polling for
+  long-running operation status, hx-swap for partial table updates. No separate frontend build,
+  no client-side state, validation next to the business logic - two backend developers keep it
+  running for years.
+- Shipped LLM features into the Go backend without putting production at risk: model calls
+  behind a swappable provider interface, requests queued with retries and timeouts instead of
+  blocking a handler, responses validated against a schema before they hit the database,
+  prompt-hash caching to stop paying twice for identical requests, streaming for long answers,
+  and hard per-client token and cost limits.
+- Separated hot and analytical storage: raw semi-structured payloads into MongoDB (flexible
+  schema, TTL on raw data), aggregates and metrics into ClickHouse - a change in source format
+  stopped requiring a schema migration.
+- Eliminated the risk of duplicate execution of critical financial operations by implementing
+  idempotency keys at both API and storage level.
+- Led the migration of a core platform domain to a new data model, redesigning schemas and
+  service contracts; production traffic was switched over with no drift between environments.
+- Cut ad-account registry p95 latency from 1-2 s to 300-500 ms by removing N+1 queries and
+  introducing batching and keyset pagination in PostgreSQL.
+- Automated DB migration checks with linters and pre-push hooks, so broken migrations stopped
+  reaching deployment.
+- Reduced coupling in the monolith by replacing direct repository access with dependency
+  inversion, preparing modules for extraction into services.
+
+Stack: Go, html/template + HTMX, PostgreSQL, MongoDB, ClickHouse, Redis, RabbitMQ, gRPC,
+Protobuf, LLM APIs, Docker, Kubernetes, GitLab CI/CD
+
+
+Go Developer - Nedra Digital                                           May 2023 - Jan 2026
+Engineering software for the oil & gas industry: data collection and analytics from equipment
+at remote drilling sites.
+
+- Replaced a spread of REST endpoints behind the analytics dashboards with a single GraphQL
+  schema (gqlgen): the frontend asked for exactly the fields it needed instead of making five
+  sequential calls, N+1 in resolvers was removed with key-batching dataloaders, live readings
+  were pushed through subscriptions over WebSocket, and heavy selections were bounded by
+  pagination plus query depth and complexity limits so a single query could not take the
+  backend down.
+- Owned the frontend side of those dashboards as well (React + TypeScript, Apollo Client):
+  types and hooks generated from the GraphQL schema, so a contract change broke the frontend
+  build instead of surfacing at runtime in front of a user.
+- Designed and built a high-load telemetry ingestion service collecting data from field
+  equipment at remote sites (up to 30K measurements/sec), with store-and-forward to survive
+  link outages and batched writes to ClickHouse, achieving 100% data completeness.
+- Sped up analytical queries 10x+ (p95 from several seconds to ~200 ms) by redesigning the
+  ClickHouse schema: partitioning, materialized views, compression codecs.
+- Migrated inter-service communication from JSON/REST to gRPC/Protobuf, reducing traffic and
+  latency over constrained links to remote sites.
+- Prevented cascading failures across a 14-microservice system by introducing circuit breakers,
+  exponential backoff and rate limiting.
+- Built an observability stack (Prometheus, Grafana) covering latency, RPS, queue depth and
+  processing rate, and instrumented services with OpenTelemetry (traces + metrics via OTLP),
+  making cross-service latency visible end to end and shortening incident response.
+- Moved environments into managed cloud infrastructure: managed Kubernetes, S3, managed
+  PostgreSQL and MongoDB, secrets in the provider's store, environments described in Terraform,
+  deploys through CI with automated migrations and a health gate on rollout; kept spend in check
+  with instance-class choices, worker autoscaling on queue depth and bucket lifecycle policies.
+- Increased team delivery speed by 20-30% by refactoring legacy code, extracting shared
+  components and separating business logic from the infrastructure layer.
+
+Stack: Go, GraphQL (gqlgen), React, TypeScript, Apollo Client, gRPC, Protobuf, ClickHouse,
+PostgreSQL, MongoDB, RabbitMQ, Redis, Prometheus, Grafana, OpenTelemetry, Terraform, Docker,
+Kubernetes
+
+
+Go Developer - Carprice                                                Jul 2021 - Feb 2023
+Leading AutoTech platform for buying used cars.
+
+- Migrated the legacy Node.js backend (Express, later NestJS) to Go domain by domain: mapped the
+  existing routes, middleware and Nest module structure, then stood up each Go service next to
+  the old one and switched traffic per endpoint, with both backends running in parallel behind a
+  shared entry point - no feature freeze, and the performance and typing problems of the legacy
+  code went away with it.
+- Developed core microservices (valuation, inspections, deals) in Go, used by 100+ field
+  inspectors.
+- Built an automated car valuation service handling 10-15K valuations/day using precomputation
+  and caching of comparable listings.
+- Integrated paid third-party vehicle-check APIs behind retry, circuit breaker and Redis caching,
+  improving stability and reducing spend on external requests.
+- Removed blocking in the mobile app by moving photo uploads (~10K/day) to asynchronous
+  processing via a message broker with direct upload to S3.
+- Introduced code review and testing practices (unit and integration tests), raising test
+  coverage of critical business logic from 0% to 95%.
+- Shipped a thin Node.js wrapper (npm package) over the Go services for frontend and scripting
+  consumers, so they did not have to work with the internal contracts directly.
+
+Stack: Go, Node.js (Express, NestJS), PostgreSQL, Redis, Kafka, RabbitMQ, S3, Docker,
+GitLab CI/CD
+
+
+AI-ASSISTED ENGINEERING
+
+- Built a multi-agent review pipeline for a Go backend (Go 1.24, chi, pgx, PostgreSQL) on
+  Claude Code: rule-based first-pass review (layers, module boundaries, security, error
+  handling, SQL migrations) -> deep analysis (transactions, edge cases, cross-file
+  consistency) -> critic agent that independently validates findings -> refactoring agent
+  that applies confirmed fixes.
+- Added a meta-analysis agent that reads pipeline traces and finds gaps in the agent chain,
+  so the process improves, not just the code.
+- Write custom Claude Code skills for recurring workflows; use agents for codebase exploration,
+  refactoring and test preparation, with architecture, contracts and final review kept manual.
+
+
+EDUCATION
+
+Bonch-Bruevich Saint Petersburg State University of Telecommunications, 2022
+Information Systems and Technologies - Software for Computing Systems and Automated Systems
+
+
+LANGUAGES
+
+Russian - native
+English - B2

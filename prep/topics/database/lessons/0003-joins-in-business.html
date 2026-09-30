@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JOIN в бизнес-задачах: какую выборку брать и чем JOIN опасен</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Joins · Практика</p>
+  <h1>JOIN в бизнес-задачах: какую выборку брать и чем JOIN опасен</h1>
+  <p class="lede">Одна победа этого урока: услышав бизнес-задачу («посчитай выручку по клиентам, включая тех, кто ничего не купил»), ты за пару секунд выбираешь нужный JOIN — и замечаешь момент, когда JOIN молча завышает сумму в отчёте.</p>
+
+  <p class="sidenote">Это продолжение урока <a href="0001-join-types.html">«Виды JOIN и их роль в БД»</a>. Там разбирали, что какой JOIN возвращает. Здесь — как выбрать нужный под задачу и где он врёт.</p>
+
+  <h2>Аналогия</h2>
+  <p>Представь, что тебя попросили сделать отчёт и ты берёшь чистый лист. Первый вопрос, который ты задаёшь себе: <b>про кого будет каждая строка?</b> Про клиента? Значит в отчёте столько строк, сколько клиентов, — и таблица клиентов главная. Про заказ? Тогда строк столько, сколько заказов.</p>
+  <p>Второй вопрос: <b>оставляем ли тех, у кого пары не нашлось?</b> Клиент без заказов — он в отчёте нужен (строка с нулём) или его вычёркиваем?</p>
+  <p>Эти два вопроса и выбирают JOIN. Всё остальное — синтаксис.</p>
+
+  <h2>Правило выбора в двух вопросах</h2>
+
+  <table>
+    <tr><th>Вопрос себе</th><th>Ответ</th><th>Что берём</th></tr>
+    <tr><td>Про кого строка в результате?</td><td>Про клиента</td><td><code>FROM customers</code> — она главная (левая)</td></tr>
+    <tr><td>Нужны те, у кого пары нет?</td><td>Да, с нулями</td><td><code>LEFT JOIN</code></td></tr>
+    <tr><td>Нужны те, у кого пары нет?</td><td>Нет, только с фактом</td><td><code>INNER JOIN</code></td></tr>
+    <tr><td>Нужны <b>только</b> те, у кого пары нет?</td><td>Да</td><td><code>LEFT JOIN</code> + <code>WHERE ... IS NULL</code></td></tr>
+    <tr><td>Нужны расхождения с обеих сторон?</td><td>Да</td><td><code>FULL OUTER JOIN</code></td></tr>
+  </table>
+
+  <h2>Схема для всех примеров</h2>
+  <p>Четыре таблицы, как в обычном интернет-магазине. Держи перед глазами.</p>
+
+  <table>
+    <tr><th colspan="2">customers (клиенты)</th></tr>
+    <tr><th>id</th><th>name</th></tr>
+    <tr><td>1</td><td>Аня</td></tr>
+    <tr><td>2</td><td>Борис</td></tr>
+    <tr><td>3</td><td>Вика</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="3">orders (заказы)</th></tr>
+    <tr><th>id</th><th>customer_id</th><th>amount</th></tr>
+    <tr><td>1</td><td>1</td><td>500</td></tr>
+    <tr><td>2</td><td>2</td><td>300</td></tr>
+  </table>
+
+  <table>
+    <tr><th colspan="3">order_items (позиции в заказе)</th></tr>
+    <tr><th>id</th><th>order_id</th><th>qty</th></tr>
+    <tr><td>10</td><td>1</td><td>1</td></tr>
+    <tr><td>11</td><td>1</td><td>2</td></tr>
+    <tr><td>12</td><td>1</td><td>1</td></tr>
+    <tr><td>13</td><td>2</td><td>1</td></tr>
+  </table>
+
+  <p>У Ани один заказ на 500 ₽, и в нём <b>три позиции</b>. У Бориса один заказ на 300 ₽ с одной позицией. У Вики заказов нет. Настоящая выручка — <b>800 ₽</b>. Запомни это число, оно понадобится.</p>
+
+  <h2>Бизнес-примеры</h2>
+
+  <h3>1. «Сколько заказов у каждого клиента, включая тех, кто ничего не купил»</h3>
+  <p>Строка — про клиента, клиентов без заказов оставляем. Значит <code>customers</code> главная, <code>LEFT JOIN</code>.</p>
+  <pre><code>SELECT c.name,
+       COUNT(o.id)            AS orders_count,
+       COALESCE(SUM(o.amount), 0) AS revenue
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id
+GROUP BY c.id, c.name;</code></pre>
+  <table>
+    <tr><th>name</th><th>orders_count</th><th>revenue</th></tr>
+    <tr><td>Аня</td><td>1</td><td>500</td></tr>
+    <tr><td>Борис</td><td>1</td><td>300</td></tr>
+    <tr><td>Вика</td><td>0</td><td>0</td></tr>
+  </table>
+  <p>Две тонкости, на которых валятся: <code>COUNT(o.id)</code>, а не <code>COUNT(*)</code> — иначе у Вики будет 1 (строка-то есть, просто с NULL внутри). И <code>COALESCE</code>, иначе выручка Вики будет NULL, а не 0, и в отчёте появится пустая ячейка.</p>
+
+  <div id="quiz-1"></div>
+
+  <h3>2. «Покажи клиентов, которые ни разу ничего не купили»</h3>
+  <p>Нужны <b>только</b> те, у кого пары нет. Это называется <b>анти-джойн</b>: делаем LEFT JOIN и оставляем строки, где справа пусто.</p>
+  <pre><code>SELECT c.name
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id
+WHERE o.id IS NULL;</code></pre>
+  <p>Вернёт одну строку: Вика. Второй способ — через <code>NOT EXISTS</code>, и на больших таблицах он обычно быстрее, потому что БД останавливается на первом найденном заказе, а не собирает все:</p>
+  <pre><code>SELECT c.name
+FROM customers c
+WHERE NOT EXISTS (
+  SELECT 1 FROM orders o WHERE o.customer_id = c.id
+);</code></pre>
+
+  <h3>3. «Выручка за месяц по менеджерам»</h3>
+  <p>Строка — про факт продажи. Менеджер без продаж в таком отчёте не нужен (его отдельно ищут анти-джойном). Значит <code>INNER JOIN</code>: нет продажи — нет строки.</p>
+  <pre><code>SELECT m.name, SUM(o.amount) AS revenue
+FROM managers m
+INNER JOIN customers c ON c.manager_id = m.id
+INNER JOIN orders    o ON o.customer_id = c.id
+WHERE o.created_at &gt;= '2026-09-01'
+GROUP BY m.id, m.name;</code></pre>
+  <p>Здесь <code>WHERE</code> по <code>orders</code> безопасен — потому что JOIN и так INNER, терять нечего.</p>
+
+  <h3>4. «Сверь наш каталог с прайсом поставщика»</h3>
+  <p>Нужны расхождения <b>с обеих сторон</b>: что есть у нас и нет у них, и наоборот. Это <code>FULL OUTER JOIN</code>.</p>
+  <pre><code>SELECT COALESCE(our.sku, their.sku) AS sku,
+       our.price   AS our_price,
+       their.price AS supplier_price
+FROM our_catalog our
+FULL OUTER JOIN supplier_price their ON their.sku = our.sku
+WHERE our.sku IS NULL OR their.sku IS NULL;</code></pre>
+  <p>Если нужны просто «наши артикулы, которых нет у поставщика», без сравнения цен — короче через операцию над множествами: <code>SELECT sku FROM our_catalog EXCEPT SELECT sku FROM supplier_price</code>.</p>
+
+  <h3>5. «Дашборд: продажи по всем менеджерам за все месяцы, с нулями»</h3>
+  <p>Единственный случай, когда <code>CROSS JOIN</code> пишут осознанно: сначала строим «решётку» всех сочетаний менеджер × месяц, потом подтягиваем факты.</p>
+  <pre><code>SELECT m.name, d.month, COALESCE(SUM(o.amount), 0) AS revenue
+FROM managers m
+CROSS JOIN (SELECT generate_series('2026-01-01'::date, '2026-12-01', '1 month') AS month) d
+LEFT JOIN orders o ON o.manager_id = m.id
+                  AND date_trunc('month', o.created_at) = d.month
+GROUP BY m.name, d.month;</code></pre>
+  <p>Без CROSS JOIN в отчёте просто не было бы строк за «пустые» месяцы, и график получился бы рваным.</p>
+
+  <h2>Чем JOIN опасен</h2>
+
+  <h3>Опасность 1: размножение строк и враньё в суммах</h3>
+  <p>Это главное. Если справа на одну строку слева приходится <b>несколько</b> строк, левая строка дублируется — и агрегаты по ней считаются столько раз, сколько дублей.</p>
+  <pre><code>SELECT SUM(o.amount)
+FROM orders o
+JOIN order_items i ON i.order_id = o.id;</code></pre>
+  <p>Что получилось на самом деле до <code>SUM</code>:</p>
+  <table>
+    <tr><th>o.id</th><th>o.amount</th><th>i.id</th></tr>
+    <tr><td>1</td><td>500</td><td>10</td></tr>
+    <tr><td>1</td><td>500</td><td>11</td></tr>
+    <tr><td>1</td><td>500</td><td>12</td></tr>
+    <tr><td>2</td><td>300</td><td>13</td></tr>
+  </table>
+  <p>Сумма = 500 + 500 + 500 + 300 = <b>1800 ₽</b> вместо настоящих <b>800 ₽</b>. Запрос не упал, ошибки нет, отчёт красивый — и полностью неверный. На английском это называют <b>fan-out</b> («раздувание»).</p>
+  <p>Лечится тем, что агрегат считают <b>до</b> соединения, отдельным подзапросом:</p>
+  <pre><code>SELECT o.id, o.amount, i.cnt
+FROM orders o
+LEFT JOIN (
+  SELECT order_id, COUNT(*) AS cnt
+  FROM order_items
+  GROUP BY order_id
+) i ON i.order_id = o.id;</code></pre>
+  <p class="sidenote"><code>SUM(DISTINCT o.amount)</code> здесь <b>не</b> спасает: если у двух разных заказов сумма совпадает, DISTINCT схлопнет и их тоже — и цифра станет заниженной.</p>
+
+  <div id="quiz-2"></div>
+
+  <h3>Опасность 2: LEFT JOIN, который втихую стал INNER</h3>
+  <p>Условие по правой таблице в <code>WHERE</code> отсекает NULL-строки — и клиенты без заказов исчезают, хотя ты их специально оставлял через LEFT.</p>
+  <pre><code>-- Вики не будет: NULL &gt;= '2026-09-01' — это не «истина»
+SELECT c.name, o.amount
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id
+WHERE o.created_at &gt;= '2026-09-01';
+
+-- Вика на месте: условие переехало в ON
+SELECT c.name, o.amount
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.id
+                  AND o.created_at &gt;= '2026-09-01';</code></pre>
+  <p>Правило: <code>ON</code> — это «с чем соединять», <code>WHERE</code> — «что оставить после соединения». Для LEFT JOIN разница принципиальная.</p>
+
+  <div id="quiz-3"></div>
+
+  <h3>Опасность 3: забытое условие — декартово произведение</h3>
+  <p>JOIN без <code>ON</code> (или с условием, которое всегда истинно) даёт N × M строк. На двух таблицах по 10 000 строк это 100 миллионов строк — база уйдёт в полку, а запрос придётся убивать вручную.</p>
+
+  <h3>Опасность 4: производительность</h3>
+  <p>СУБД выполняет JOIN одним из трёх физических алгоритмов, и от этого зависит скорость:</p>
+  <table>
+    <tr><th>Алгоритм</th><th>Когда выбирается</th><th>Что может пойти не так</th></tr>
+    <tr><td>Nested Loop</td><td>Левая таблица мелкая, справа есть индекс по ключу</td><td>Без индекса превращается в перебор всего — катастрофа на больших таблицах</td></tr>
+    <tr><td>Hash Join</td><td>Большие объёмы, соединение по равенству</td><td>Хэш-таблица не влезла в память — БД сливает её на диск, запрос резко тормозит</td></tr>
+    <tr><td>Merge Join</td><td>Обе стороны уже отсортированы по ключу</td><td>Если сортировки нет, её придётся делать, и это дорого</td></tr>
+  </table>
+  <p>Практические грабли, которые убивают индекс на ключе соединения: соединение колонок <b>разных типов</b> (<code>varchar</code> с <code>int</code>) и функция над колонкой в условии (<code>ON lower(a.email) = b.email</code>). В обоих случаях индекс не применяется, и вместо быстрого поиска будет полное сканирование.</p>
+
+  <h3>Опасность 5: N+1 против одного JOIN</h3>
+  <p>Ловушка Go-разработчика с ORM: сначала достали 1000 клиентов, потом в цикле на каждого сходили за заказами — это 1001 запрос к базе вместо одного. JOIN лечит N+1, но взамен приносит опасность №1 — размножение строк, которое придётся схлопывать уже в коде.</p>
+
+  <div class="callout">
+    <b>Частая ошибка на собесе.</b> На вопрос «чем опасны JOIN» отвечают только про производительность — «они медленные, много таблиц соединять плохо». Это слабый ответ. Сильный: начать с <b>корректности данных</b> — размножение строк при связи «один ко многим» завышает <code>SUM</code> и <code>COUNT</code>, и это хуже медленного запроса, потому что медленный запрос виден сразу, а неверная цифра в отчёте живёт месяцами. И только потом — про планы выполнения и индексы.
+  </div>
+
+  <div id="quiz-4"></div>
+
+  <h2>Что сказать на собесе одной фразой</h2>
+  <p>«Вид JOIN я выбираю по двум вопросам: про какую сущность строка в результате и нужны ли записи без пары. А главный риск JOIN — не скорость, а размножение строк при связи один-ко-многим: агрегаты начинают врать, поэтому агрегировать лучше до соединения.»</p>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_03_joins_set_operations.md</code> (физические алгоритмы JOIN — Nested Loop / Hash / Merge; UNION vs UNION ALL); <a href="https://www.postgresql.org/docs/current/tutorial-join.html">PostgreSQL Tutorial — Joins Between Tables</a>; <a href="https://www.postgresql.org/docs/current/queries-table-expressions.html">PostgreSQL Docs — Table Expressions</a> (формальные определения ON/USING и всех видов JOIN).</p>
+
+  <div class="ask-teacher">Если что-то из этого осталось непонятным — просто спроси, разберём отдельно.</div>
+
+  <div class="nav-links">
+    <a href="../reference/0003-joins-in-business.html">Шпаргалка по теме →</a>
+    <a href="0001-join-types.html">← Виды JOIN</a>
+  </div>
+
+</div>
+<script src="../../../assets/quiz.js"></script>
+<script>
+new Quiz(document.getElementById('quiz-1'), {
+  prompt: 'LEFT JOIN клиентов с заказами, у Вики заказов нет. Что вернёт COUNT(*) в её строке?',
+  options: [
+    'Ноль — заказов у неё действительно нет',
+    'Единицу — строка есть, просто поля заказа NULL',
+    'NULL — считать в этой строке нечего'
+  ],
+  correctIndex: 1,
+  feedback: {
+    correct: 'Верно — COUNT(*) считает строки, а строка после LEFT JOIN существует. Нужен COUNT(o.id): он пропускает NULL и даст ноль.',
+    incorrect: 'Неверно. COUNT(*) считает строки результата, а строка у Вики есть — с NULL внутри. Получится 1. Ноль даст только COUNT(o.id).'
+  }
+});
+new Quiz(document.getElementById('quiz-2'), {
+  prompt: 'Заказ на 500 ₽ содержит 3 позиции. SUM(o.amount) после JOIN с order_items вернёт по этому заказу:',
+  options: [
+    '500 ₽ — сумма заказа не зависит от числа позиций',
+    '1500 ₽ — строка заказа продублировалась по числу позиций',
+    '167 ₽ — сумма распределится между позициями'
+  ],
+  correctIndex: 1,
+  feedback: {
+    correct: 'Верно — это fan-out: заказ попал в результат трижды, и SUM сложила 500 три раза. Агрегировать надо до соединения.',
+    incorrect: 'Неверно. JOIN размножил строку заказа по числу позиций, и SUM сложила 500 трижды — получится 1500 ₽.'
+  }
+});
+new Quiz(document.getElementById('quiz-3'), {
+  prompt: 'Нужны все клиенты, а рядом — только их сентябрьские заказы. Куда поставить условие по дате?',
+  options: [
+    'В WHERE — так привычнее и результат тот же',
+    'В ON — иначе клиенты без сентябрьских заказов исчезнут',
+    'В GROUP BY — дата станет частью группировки'
+  ],
+  correctIndex: 1,
+  feedback: {
+    correct: 'Верно — ON отбирает, что соединять, и клиент без пары остаётся с NULL. WHERE отфильтровал бы его уже после соединения.',
+    incorrect: 'Неверно. WHERE применяется после соединения, а NULL не проходит сравнение с датой — клиенты без сентябрьских заказов пропадут.'
+  }
+});
+new Quiz(document.getElementById('quiz-4'), {
+  prompt: 'Задача: «найти товары, которые ни разу не заказывали». Какая конструкция решает её напрямую?',
+  options: [
+    'INNER JOIN товаров с заказами и GROUP BY',
+    'LEFT JOIN с заказами и условие IS NULL по заказу',
+    'CROSS JOIN товаров с заказами и фильтр по дате'
+  ],
+  correctIndex: 1,
+  feedback: {
+    correct: 'Верно — это анти-джойн: соединяем, оставляем строки без пары. Равнозначная запись — NOT EXISTS, и на больших таблицах она обычно быстрее.',
+    incorrect: 'Неверно. INNER JOIN оставит только заказанные товары — то есть ровно противоположное. Нужен LEFT JOIN с проверкой IS NULL.'
+  }
+});
+</script>
+</body>
+</html>

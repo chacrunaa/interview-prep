@@ -1,0 +1,166 @@
+ANDREY KALIN
+Go Backend Engineer - Networking, Proxy Infrastructure, Distributed Systems
+
+Email: endryu.yoll@yandex.com
+Telegram: @ka_dev_3
+WhatsApp: +84888147284
+
+Full-time. Remote.
+
+SUMMARY
+
+Backend engineer with 5+ years of commercial Go experience, most of it spent on the network side
+of distributed systems: services that move large volumes of traffic through unreliable links and
+third-party endpoints and have to keep working when part of that path degrades. I built an egress
+layer as a separate Go service (HTTP CONNECT and SOCKS5, pooled keep-alive connections, rotation
+of outbound addresses, per-upstream rate limits and circuit breakers) and a high-throughput
+ingestion service taking up to 30K measurements/sec from remote sites with store-and-forward and
+100% data completeness. I debug network incidents in production rather than guess about them:
+errors classified per upstream and per pool, RED metrics on the egress path, and ss/tcpdump/
+conntrack when metrics are not enough - which is how ephemeral port and conntrack exhaustion,
+retry storms and DNS degradation get found instead of being called "flaky network".
+I started on a Node.js backend (Express, then NestJS) and migrated it to Go domain by domain, so
+I can still read and support the Node.js side of a product.
+
+
+SKILLS
+
+Go                   microservices, CLI tooling, concurrency (goroutine pools, backpressure,
+                     context cancellation), clean layering and dependency inversion,
+                     unit and integration testing
+Networking           TCP/IP, HTTP/1.1 and HTTP/2, TLS, DNS, HTTP CONNECT, SOCKS5,
+                     connection pooling and keep-alive reuse, per-phase timeouts
+                     (dial / TLS handshake / response headers / body), NAT and conntrack,
+                     ephemeral port exhaustion, ss / tcpdump / conntrack
+Proxy infrastructure egress service in front of external endpoints: proxy pools with rotation
+                     of outbound addresses, per-upstream limits and backoff, pool health
+                     tracking so one degraded pool does not take down total throughput
+APIs & protocols     gRPC/Protobuf (migrated from JSON/REST), REST, SDK generated from proto
+                     with semantic versioning and tagged distribution
+Data ingestion       high-throughput pipelines, batching, store-and-forward over unreliable
+                     links, idempotent consumers, stateless fetch workers + scheduler
+Storage              PostgreSQL (schema redesign, N+1 removal, keyset pagination, migration
+                     linting), ClickHouse (partitioning, materialized views, codecs),
+                     MongoDB (semi-structured raw payloads, flexible schema, TTL), Redis
+Messaging            Kafka, RabbitMQ
+Reliability          circuit breaker, retry with exponential backoff and retry budgets,
+                     rate limiting, idempotency keys, graceful degradation
+Observability        Prometheus, Grafana (latency, RPS, queue depth, per-upstream error
+                     classes), OpenTelemetry: tracing and metrics via OTel SDK, OTLP,
+                     context propagation across gRPC services; pprof for CPU/heap/goroutines
+Other languages      Node.js (Express, NestJS - legacy backend I owned and migrated to Go;
+                     npm package as a thin wrapper over a Go SDK), Rust - reading level:
+                     can read and patch existing code, no production services yet
+Infrastructure       Docker, Kubernetes, GitLab CI/CD
+AI-assisted dev      Claude Code: custom agents and skills, multi-agent review pipeline,
+                     project rules as agent instructions
+English              B2 (working proficiency)
+
+
+EXPERIENCE
+
+Go Developer - Syndicate Group                                         Jan 2026 - Sep 2026
+Product IT company building internal performance-marketing platforms, including a payments domain.
+Platform data is collected from a large number of external ad-platform APIs.
+
+- Kept the outbound path stable under tens of thousands of concurrent connections by moving
+  transport into a separate Go egress service: HTTP CONNECT and SOCKS5, a pool of reused
+  keep-alive connections instead of a new connect per request, per-upstream limits and backoff,
+  and rotation of outbound addresses across pools.
+- Cut network incident triage from hours to minutes by classifying egress errors (dial timeout,
+  TLS failure, upstream refusal, upstream-side limit) and exposing RED metrics per upstream and
+  per connection pool; this is how ephemeral port and conntrack exhaustion on nodes, retry storms
+  after a single upstream degraded, and DNS resolution slowdowns were actually found.
+- Removed a class of latency bugs by replacing one global request timeout with separate timeouts
+  per connection phase (dial, TLS handshake, response headers, body read) and tuning pool sizes
+  based on pprof and goroutine metrics.
+- Kept external data collection running against aggressive anti-automation defences by splitting
+  the pipeline into a scheduler, a stateless pool of fetch workers and the transport layer;
+  per-domain backoff and pool health tracking meant a blocked pool shifted load to the others
+  instead of dropping total throughput.
+- Separated hot and analytical storage: raw semi-structured payloads into MongoDB (flexible
+  schema, TTL on raw data), aggregates and metrics into ClickHouse - so a change in source format
+  no longer required a schema migration.
+- Eliminated the risk of duplicate execution of critical financial operations by implementing
+  idempotency keys at both API and storage level.
+- Led the migration of a core platform domain to a new data model, redesigning schemas and
+  service contracts; production traffic was switched over with no drift between environments.
+- Cut ad-account registry p95 latency from 1-2 s to 300-500 ms by removing N+1 queries and
+  introducing batching and keyset pagination in PostgreSQL.
+
+Stack: Go, PostgreSQL, MongoDB, ClickHouse, Redis, Kafka, RabbitMQ, gRPC, Protobuf,
+Prometheus, Grafana, Docker, Kubernetes, GitLab CI/CD
+
+
+Go Developer - Nedra Digital                                           May 2023 - Jan 2026
+Engineering software for the oil & gas industry: data collection and analytics from equipment
+at remote drilling sites over constrained, unreliable links.
+
+- Designed and built a high-load telemetry ingestion service collecting data from field
+  equipment at remote sites (up to 30K measurements/sec), with store-and-forward to survive
+  link outages and batched writes to ClickHouse, achieving 100% data completeness.
+- Migrated inter-service communication from JSON/REST to gRPC/Protobuf, reducing traffic and
+  latency over constrained links to remote sites.
+- Prevented cascading failures across a 14-microservice system by introducing circuit breakers,
+  exponential backoff and rate limiting.
+- Built an observability stack (Prometheus, Grafana) covering latency, RPS, queue depth and
+  processing rate, and instrumented services with OpenTelemetry (traces + metrics via OTLP),
+  making cross-service latency visible end to end and shortening incident response.
+- Sped up analytical queries 10x+ (p95 from several seconds to ~200 ms) by redesigning the
+  ClickHouse schema: partitioning, materialized views, compression codecs.
+- Simplified integration for external consumers by building an SDK generated from the proto
+  contracts: semantic versioning with a changelog, tagged publishing through a private module
+  proxy, examples and smoke tests in the SDK repository.
+- Increased team delivery speed by 20-30% by refactoring legacy code, extracting shared
+  components and separating business logic from the infrastructure layer.
+
+Stack: Go, gRPC, Protobuf, ClickHouse, PostgreSQL, RabbitMQ, Redis, Prometheus, Grafana,
+OpenTelemetry, Docker, Kubernetes
+
+
+Go Developer - Carprice                                                Jul 2021 - Feb 2023
+Leading AutoTech platform for buying used cars.
+
+- Migrated the legacy Node.js backend (Express, later NestJS) to Go domain by domain: mapped the
+  existing routes, middleware and Nest module structure, then stood up each Go service next to
+  the old one and switched traffic per endpoint, with both backends running in parallel behind a
+  shared entry point - no feature freeze, and the performance and typing problems of the legacy
+  code went away with it.
+- Developed core microservices (valuation, inspections, deals) in Go, used by 100+ field
+  inspectors.
+- Integrated paid third-party vehicle-check APIs behind retry, circuit breaker and Redis caching,
+  improving stability and reducing spend on external requests.
+- Removed blocking in the mobile app by moving photo uploads (~10K/day) to asynchronous
+  processing via a message broker with direct upload to S3.
+- Built an automated car valuation service handling 10-15K valuations/day using precomputation
+  and caching of comparable listings.
+- Introduced code review and testing practices (unit and integration tests), raising test
+  coverage of critical business logic from 0% to 95%.
+- Shipped a thin Node.js wrapper (npm package) over the Go services for frontend and scripting
+  consumers, so they did not have to work with the internal contracts directly.
+
+Stack: Go, Node.js (Express, NestJS), PostgreSQL, Redis, Kafka, RabbitMQ, S3, Docker,
+GitLab CI/CD
+
+
+AI-ASSISTED ENGINEERING
+
+- Built a multi-agent review pipeline for a Go backend (Go 1.24, chi, pgx, PostgreSQL) on
+  Claude Code: rule-based first-pass review (layers, module boundaries, security, error
+  handling, SQL migrations) -> deep analysis (transactions, edge cases, cross-file
+  consistency) -> critic agent that independently validates findings -> refactoring agent
+  that applies confirmed fixes.
+- Write custom Claude Code skills for recurring workflows; use agents for codebase exploration,
+  refactoring and test preparation, with architecture, contracts and final review kept manual.
+
+
+EDUCATION
+
+Bonch-Bruevich Saint Petersburg State University of Telecommunications, 2022
+Information Systems and Technologies - Software for Computing Systems and Automated Systems
+
+
+LANGUAGES
+
+Russian - native
+English - B2

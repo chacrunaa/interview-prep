@@ -1,0 +1,130 @@
+ANDREY KALIN
+Go Backend Developer - Distributed Systems, Reliability, Code Quality
+
+Email: endryu.yoll@yandex.com
+Telegram: @ka_dev_3
+WhatsApp: +7 921 981 4983
+
+Full-time. Remote / hybrid / on-site.
+
+
+SUMMARY
+
+Backend developer with 5+ years of commercial Go experience building microservices on
+PostgreSQL and message brokers (RabbitMQ, Kafka), shipped in Docker and run on Kubernetes.
+Most of my work has been about making systems correct and safe to change: validated,
+loss-free data migrations, idempotent critical operations, fault tolerance across a
+14-service system, and automated checks in CI that stop bad changes before deployment.
+I introduced code review and testing practices from scratch (0% to 95% coverage of critical
+logic), pay down technical debt through refactoring, and pick technologies based on
+measured trade-offs rather than habit. I want to move into container security and am ready
+to go deep into the domain: image security, runtime control and configuration compliance
+are a natural next step from the infrastructure my services already live on.
+
+
+CORE SKILLS
+
+Go development       microservices and monoliths, CLI tooling, concurrency, clean layering
+                     (business logic separated from infrastructure, dependency inversion)
+PostgreSQL           schema and contract redesign, query optimization (N+1 removal, batching,
+                     keyset pagination), migration linting and pre-push checks
+Message brokers      RabbitMQ, Kafka: async processing, store-and-forward, reliable delivery
+                     backed by idempotent consumers and operations
+Safety & integrity   idempotency keys at API and storage level, validation and quarantine of
+                     bad data, rate limiting, automated pre-deployment checks
+Reliability          circuit breaker, retry with exponential backoff, cascading-failure
+                     prevention across 14 microservices
+Architecture         component design, technology selection (JSON/REST -> gRPC/Protobuf),
+                     monolith decoupling in preparation for microservices
+Quality              code review culture, unit and integration tests, refactoring and
+                     technical debt reduction, shared development standards
+Containers & infra   Docker, Kubernetes, GitLab CI/CD
+Observability        Prometheus, Grafana: latency, RPS, queue and throughput metrics
+
+
+EXPERIENCE
+
+
+Syndicate Group - Go Developer
+Jan 2026 - Sep 2026 | Moscow
+Product IT company building internal performance-marketing platforms.
+
+- Moved large volumes of production data with zero loss by building a Go CLI migration tool
+  with validation, quarantine of invalid records and a safe re-run mechanism.
+- Automated DB migration checks with linters and pre-push hooks, stopping broken migrations
+  from reaching deployment and keeping every developer's database schema in sync.
+- Led the migration of a core platform domain to a new data model, redesigning schemas and
+  service contracts; production traffic was switched over smoothly with no drift between
+  environments.
+- Eliminated the risk of duplicate execution of critical financial operations by implementing
+  idempotency with idempotency keys at both API and storage level.
+- Reduced coupling in the monolith by replacing direct repository access with dependency
+  inversion, paying down technical debt and preparing modules for extraction into services.
+- Cut ad-account registry p95 latency from 1-2 s to 300-500 ms by removing N+1 queries,
+  introducing batching and keyset pagination in PostgreSQL.
+
+Stack: Go, PostgreSQL, RabbitMQ, Redis, gRPC, Protobuf, REST, Docker, Kubernetes, GitLab CI/CD
+
+
+Nedra Digital - Go Developer
+May 2023 - Jan 2026 | Saint Petersburg
+Engineering software for the oil & gas industry: data collection and analytics from remote sites.
+
+- Prevented cascading failures across a 14-microservice system by introducing circuit breakers,
+  exponential backoff and rate limiting.
+- Migrated inter-service communication from JSON/REST to gRPC/Protobuf,
+  reducing traffic and latency over constrained links to remote sites.
+- Designed and built a high-load telemetry ingestion service (up to 30K measurements/sec)
+  with store-and-forward and batched writes to ClickHouse, achieving 100% data completeness.
+- Increased team delivery speed by 20-30% by refactoring legacy code, extracting shared
+  components and separating business logic from the infrastructure layer.
+- Built an observability stack (Prometheus, Grafana) covering latency, RPS, queue depth and
+  processing rate, shortening incident response time.
+- Sped up analytical queries 10x+ (p95 from several seconds to ~200 ms) by redesigning the
+  ClickHouse schema: partitioning, materialized views, compression codecs.
+
+Stack: Go, PostgreSQL, ClickHouse, RabbitMQ, Redis, gRPC, Protobuf, Prometheus, Grafana,
+Docker, Kubernetes
+
+
+Carprice - Go Developer
+Jul 2021 - Feb 2023 | Moscow
+Leading AutoTech platform for buying used cars.
+
+- Introduced code review and testing practices (unit and integration tests), raising test
+  coverage of critical business logic from 0% to 95%.
+- Developed core microservices (valuation, inspections, deals) used by a network of
+  100+ field inspectors.
+- Removed blocking in the mobile app by moving photo uploads (~10K/day) to asynchronous
+  processing via a message broker with direct upload to S3.
+- Integrated paid third-party vehicle-check APIs using retry, circuit breaker and Redis caching,
+  improving stability and reducing spend on external requests.
+- Built an automated car valuation service handling 10-15K valuations/day using precomputation
+  and caching of comparable listings.
+- Reduced dispatchers' manual work 3x with an automatic inspection assignment service based
+  on geolocation and inspector workload.
+
+Stack: Go, PostgreSQL, Redis, Kafka, REST, GraphQL, S3, Docker, GitLab CI/CD
+
+
+TECHNICAL SKILLS
+
+Language        Go
+Databases       PostgreSQL, ClickHouse, Redis, S3
+Messaging       RabbitMQ, Kafka
+APIs            gRPC, Protobuf, REST, GraphQL, SOAP
+Containers      Docker, Kubernetes
+CI/CD & tools   GitLab CI/CD, Git, migration linters, pre-push hooks
+Observability   Prometheus, Grafana
+
+
+EDUCATION
+
+Bonch-Bruevich Saint Petersburg State University of Telecommunications, 2022
+Information Systems and Technologies - Software for Computing Systems and Automated Systems
+
+
+LANGUAGES
+
+Russian - native
+English - B2 (upper-intermediate)
