@@ -1,9 +1,11 @@
 # interview-prep
 
-Личный репозиторий для активного поиска работы Go-разработчиком. Два глобально зарегистрированных скилла (симлинки в `~/.claude/skills/`):
+Личный репозиторий для активного поиска работы Go-разработчиком. Четыре глобально зарегистрированных скилла (симлинки в `~/.claude/skills/`):
 
-- **`career`** (`skills/career/`) - конвейер откликов по направлению: `/career <hh|hirify|linkedin> new | answers | status`.
+- **`career`** (`skills/career/`) - конвейер откликов по направлению: `/career <hh|hirify|linkedin> scan | new | answers | status`. `scan` - только `hirify`: дешёвый триаж вакансий через MCP.
 - **`teach-go`** (`skills/teach-go/`) - подготовка: `lesson`, `drill`, `mock`, `review`, `status` и `live qa|code` - живая помощь на созвоне. Кастомизация базового `teach` (`~/.agents/skills/teach`).
+- **`teach-sd`** (`skills/teach-sd/`) - System Design по курсу Балуна (`reference/balun-sd/`, вне git): `status`, `next`, `drill`, `review`, `mock`, `hw [N]`, `hw check [N]`. Дневник и прогресс - `prep/sd/`, ДЗ читается из `~/personal/social_network_system_design` (только чтение).
+- **`gen-resume`** (`skills/gen-resume/`) - сборка резюме под вакансию из рыбы направления: `/gen-resume <hh|hirify|linkedin> [slug] [en|ru] [compact|extended]`, вакансия берётся из `<D>/inbox.md`. Канон объёма и формы - из `reference/`, уроки - из `audit/`.
 
 ## Структура
 
@@ -19,14 +21,15 @@ linkedin/    профиль LinkedIn + запад (EU/US)          + profile/, i
   master/    эталонное резюме направления
   fish/      рыба направления: story, bullets, patterns, answers, archive
   inbox.md   сырые вакансии и вопросы форм
+  scan.md    лента триажа, только у направлений с MCP (сейчас hirify)
   pipeline/  BOARD.md, YYYY-MM-<slug>/, archive/
 
 me/          личное, постоянное: реальные резюме с контактами, facts.md
 audit/       общий аудит по всем направлениям: vacancy-history (лог прогонов), TLDR (сводка рыбы и тегов)
-reference/   чужое, только для чтения: warriors/, roast-chat/ (в .gitignore), разборы
-prep/        данные teach-go
+reference/   чужое, только для чтения: три экспорта чатов (в .gitignore) и разборы по ним, warriors/ (см. reference/README.md)
+prep/        данные teach-go, prep/sd/ - данные teach-sd
 rules/       общий стиль текста от первого лица
-skills/      career, teach-go
+skills/      career, teach-go, teach-sd, gen-resume
 _legacy/     остатки старой структуры, ждут разбора (см. README)
 ```
 
@@ -43,6 +46,7 @@ _legacy/     остатки старой структуры, ждут разбо
 - **`<D>/fish/story.md` - одна привязка рыбы к месту работы на все версии направления.** Сначала запись в story, потом использование.
 - **Одна вакансия - одна папка** `<D>/pipeline/YYYY-MM-<slug>/` с `card.md` (исходный текст вакансии, гипотеза, разбор, какая рыба ушла, история). Закрытые вакансии переезжают в `<D>/pipeline/archive/`.
 - **`<D>/pipeline/BOARD.md` - точка обзора направления.** Обновляется в конце каждого режима `career`.
+- **Наружу через Hirify MCP ничего не уходит без прямого «да» на конкретную вакансию.** Чтение (фиды, карточки, вакансии, список откликов, переписка) свободно. `reveal_contact`, `apply`, `applications.reply`, `applications.track`, `vacancies.hide`, `companies.hide`, `profiles.*`, `feeds.*` меняют аккаунт или доходят до живого рекрутёра - каждый раз спрашивается.
 - Ни один скилл не пишет в `~/personal/InterviewPro` (внешний банк вопросов, только чтение) и в другие репозитории.
 
 Репозиторий содержит реальные личные данные (контакты в `me/`) и чужие (`reference/`). При работе с внешними сервисами или публикацией это учитывается.

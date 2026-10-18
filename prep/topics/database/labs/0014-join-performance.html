@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Практика: ускорение JOIN</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Практика к уроку 0014</p>
+  <h1>Практика: сам ломаешь и чинишь JOIN</h1>
+  <p class="lede">Шесть шагов на живом PostgreSQL. В каждом ты вводишь команду, <b>сначала предсказываешь</b>, что покажет план, и только потом открываешь ответ. Цель — научиться видеть в <code>EXPLAIN ANALYZE</code> пять рычагов из урока.</p>
+
+  <p class="sidenote">Все планы в ответах получены на этом же стенде (PostgreSQL 16). Миллисекунды у тебя будут другие — важны <b>форма плана</b> и <b>во сколько раз</b> меняется время. Урок: <a href="../lessons/0014-join-performance.html">«Как ускорить JOIN»</a>.</p>
+
+  <h2>Подготовка (один раз)</h2>
+  <p>Нужен только Docker. Отдельный одноразовый контейнер, твои базы он не трогает:</p>
+  <pre><code>docker run -d --name join-lab -e POSTGRES_PASSWORD=lab \
+  -v ~/personal/interview-prep/prep/topics/database/labs:/lab:ro \
+  postgres:16.6-alpine
+
+docker exec -it join-lab psql -U postgres</code></pre>
+  <p>Дальше всё в <code>psql</code>:</p>
+  <pre><code>\i /lab/0014-join-performance.sql
+\timing on
+SET max_parallel_workers_per_gather = 0;</code></pre>
+  <p>Последняя строка выключает параллельные воркеры, чтобы планы были короче и читались как в уроке. Без неё сверху появятся <code>Gather</code> и <code>Parallel Seq Scan</code> — суть та же, просто таблицу читают три процесса вместо одного.</p>
+  <p>Что лежит в базе: <code>customers</code> — 100 000, <code>orders</code> — 500 000 (у нечётных клиентов по 10 заказов, у чётных ни одного), <code>order_items</code> — 2 000 000 (по 4 на заказ), <code>products</code> — 1000, <code>imports</code> — 1000.</p>
+
+  <!-- ШАГ 1 -->
+  <div class="step">
+    <h2>Шаг 1. Внешний ключ без индекса</h2>
+    <pre><code>EXPLAIN (ANALYZE)
+SELECT o.id, i.sku, i.qty
+FROM orders o
+JOIN order_items i ON i.order_id = o.id
+WHERE o.customer_id = 43;</code></pre>
+    <p class="predict"><b>Предскажи:</b> у клиента 43 всего 10 заказов, 40 позиций. Сколько строк <code>order_items</code> прочитает база, чтобы их найти? Какой будет алгоритм соединения?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code>Hash Join  (actual time=0.129..146.551 rows=40 loops=1)
+  Hash Cond: (i.order_id = o.id)
+  -&gt;  Seq Scan on order_items i  (actual rows=2000000 loops=1)     ← все 2 млн
+  -&gt;  Hash  ... Batches: 1  Memory Usage: 9kB
+        -&gt;  Bitmap Heap Scan on orders o  (actual rows=10 loops=1)
+              -&gt;  Bitmap Index Scan on orders_customer_id_idx
+Execution Time: 146.601 ms</code></pre>
+      <p>Чтобы найти 40 строк, прочитано 2 000 000. По <code>orders</code> база ищет индексом (10 строк), складывает их в маленькую хэш-таблицу (9 kB) и прогоняет через неё <b>всю</b> <code>order_items</code>. Другого выхода у неё нет: по <code>order_id</code> нет индекса, хотя внешний ключ есть.</p>
+      <p>Проверь сам: <code>\d order_items</code> — в списке индексов только <code>order_items_pkey</code>. Внешний ключ в PostgreSQL индекс не создаёт.</p>
+    </details>
+  </div>
+
+  <!-- ШАГ 2 -->
+  <div class="step">
+    <h2>Шаг 2. Добавляем индекс</h2>
+    <pre><code>CREATE INDEX order_items_order_id_idx ON order_items (order_id);</code></pre>
+    <p>И снова запрос из шага 1 (стрелка вверх в <code>psql</code>).</p>
+    <p class="predict"><b>Предскажи:</b> останется ли Hash Join? Сколько раз (<code>loops</code>) выполнится поиск по <code>order_items</code>?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code>Nested Loop  (actual time=0.036..0.349 rows=40 loops=1)
+  -&gt;  Bitmap Heap Scan on orders o  (actual rows=10 loops=1)
+        -&gt;  Bitmap Index Scan on orders_customer_id_idx
+  -&gt;  Index Scan using order_items_order_id_idx on order_items i
+        (actual rows=4 loops=10)                                   ← 10 заглядываний по 4 строки
+Execution Time: 0.424 ms</code></pre>
+      <p>146 мс → 0.4 мс, примерно в 350 раз. Ты не просил базу сменить алгоритм — планировщик сам решил, что 10 быстрых заглядываний по индексу дешевле одного полного прохода. <code>loops=10</code> — по разу на каждый заказ снаружи.</p>
+      <p>На живой базе индекс создают <code>CREATE INDEX CONCURRENTLY</code>, чтобы не блокировать запись. Здесь можно без него.</p>
+    </details>
+  </div>
+
+  <!-- ШАГ 2Б -->
+  <div class="step">
+    <h2>Шаг 2б. Индекс есть — а база его не берёт</h2>
+    <pre><code>EXPLAIN (ANALYZE)
+SELECT o.id, i.sku, i.qty
+FROM orders o
+JOIN order_items i ON i.order_id = o.id
+WHERE o.customer_id &lt; 20000;</code></pre>
+    <p class="predict"><b>Предскажи:</b> индекс <code>order_items_order_id_idx</code> теперь есть. Будет ли Nested Loop с ним?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code>Hash Join  (actual time=20.181..206.712 rows=400000 loops=1)
+  -&gt;  Seq Scan on order_items i  (actual rows=2000000 loops=1)
+  -&gt;  Hash  Buckets: 131072  Batches: 1  Memory Usage: 4540kB
+        -&gt;  Bitmap Heap Scan on orders o  (actual rows=100000 loops=1)
+Execution Time: 214.104 ms</code></pre>
+      <p>Нет — и это <b>правильно</b>. Снаружи 100 000 заказов, нужна пятая часть всех позиций. 100 000 заглядываний в индекс — это 100 000 прыжков по случайным страницам, а один последовательный проход быстрее. Это вопрос банка «Когда полное сканирование выгоднее доступа по индексу?»: когда запрос возвращает значительную часть строк.</p>
+      <p>Вывод для собеса: <b>индекс — не приказ, а возможность</b>. Планировщик берёт его, только если по оценке так дешевле.</p>
+    </details>
+  </div>
+
+  <!-- ШАГ 3 -->
+  <div class="step">
+    <h2>Шаг 3. Устаревшая статистика</h2>
+    <p>Имитируем массовый импорт: статистика по <code>imports</code> собрана, когда там была 1000 строк со статусом <code>done</code>. Теперь заливаем 100 000 строк со статусом <code>new</code> — autovacuum на этой таблице выключен, так что статистику никто не обновит.</p>
+    <pre><code>INSERT INTO imports (sku, status)
+SELECT 'SKU-' || (g % 1000), 'new' FROM generate_series(1, 100000) g;
+
+EXPLAIN (ANALYZE)
+SELECT count(*)
+FROM imports im
+JOIN products p ON p.sku = im.sku
+WHERE im.status = 'new';</code></pre>
+    <p class="predict"><b>Предскажи:</b> сколько строк со статусом <code>new</code> <b>ожидает</b> планировщик (<code>rows=</code> в оценке)? Какой алгоритм он выберет, если поверит своей оценке? Запрос будет думать секунд 5–10 — это и есть ответ.</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code>Aggregate  (actual time=6938.683..6938.693 rows=1 loops=1)
+  -&gt;  Nested Loop  (cost=0.00..1553.29 rows=1) (actual rows=100000 loops=1)
+        Join Filter: (im.sku = p.sku)
+        Rows Removed by Join Filter: 99900000
+        -&gt;  Seq Scan on imports im  (cost=... rows=1) (actual rows=100000 loops=1)
+              Filter: (status = 'new'::text)
+        -&gt;  Seq Scan on products p  (actual rows=1000 loops=100000)
+Execution Time: 6939.241 ms</code></pre>
+      <p>Планировщик ждал <b><code>rows=1</code></b>: в последней статистике значения <code>new</code> не было вовсе. Под одну строку Nested Loop — идеальный выбор: «один раз пройду 1000 товаров». А пришло 100 000, и <code>products</code> перечитана 100 000 раз (<code>loops=100000</code>) — почти 100 миллионов лишних сравнений (<code>Rows Removed by Join Filter</code>).</p>
+      <p>Теперь почини:</p>
+      <pre><code>ANALYZE imports;
+-- и тот же EXPLAIN (ANALYZE) ещё раз</code></pre>
+      <pre><code>Aggregate  (actual time=17.465..17.466 rows=1 loops=1)
+  -&gt;  Hash Join  (rows=100010) (actual rows=100000 loops=1)
+        Hash Cond: (im.sku = p.sku)
+        -&gt;  Seq Scan on imports im  (rows=100010) (actual rows=100000)
+        -&gt;  Hash  Batches: 1  Memory Usage: 47kB
+              -&gt;  Seq Scan on products p  (actual rows=1000 loops=1)
+Execution Time: 17.501 ms</code></pre>
+      <p>Оценка совпала с фактом → Hash Join → 6.9 секунды превратились в 17 мс, в 400 раз. Ни индексов, ни переписывания запроса: одна команда <code>ANALYZE</code>.</p>
+      <p><b>Тонкость, которую я нашёл, пока готовил стенд:</b> если внутри Nested Loop дешёвый поиск по первичному ключу, ошибка оценки почти не стреляет — сотни тысяч заглядываний в индекс из кэша проходят быстро. Больно становится, когда внутренняя сторона дорогая, как здесь: полный проход без индекса на каждую строку снаружи.</p>
+    </details>
+  </div>
+
+  <!-- ШАГ 4 -->
+  <div class="step">
+    <h2>Шаг 4. Хэш не влез в память</h2>
+    <pre><code>SET work_mem = '4MB';   -- значение по умолчанию, на всякий случай
+
+EXPLAIN (ANALYZE)
+SELECT o.customer_id, sum(i.qty)
+FROM orders o
+JOIN order_items i ON i.order_id = o.id
+GROUP BY o.customer_id;</code></pre>
+    <p class="predict"><b>Предскажи:</b> хэш-таблица строится по 500 000 заказов. Найди в плане узел <code>Hash</code> — что написано в <code>Batches</code>?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code>HashAggregate  (actual time=985.347..988.468 rows=50000 loops=1)
+  -&gt;  Hash Join  (actual time=109.046..797.150 rows=2000000 loops=1)
+        -&gt;  ...
+        -&gt;  Hash  Buckets: 262144  Batches: 4  Memory Usage: 6928kB    ← 4 куска через диск
+Execution Time: 993.241 ms</code></pre>
+      <p><code>Batches: 4</code> — хэш-таблица не поместилась в <code>work_mem</code>, и база разрезала соединение на 4 прохода с временными файлами на диске. Теперь дай памяти:</p>
+      <pre><code>SET work_mem = '256MB';
+-- тот же EXPLAIN (ANALYZE)</code></pre>
+      <pre><code>  -&gt;  Hash Join  (actual time=67.738..371.888 rows=2000000 loops=1)
+        -&gt;  Hash  Buckets: 524288  Batches: 1  Memory Usage: 23628kB  ← всё в памяти
+Execution Time: 596.878 ms</code></pre>
+      <p><code>Batches: 1</code>, время почти вдвое меньше. В <code>psql</code> обычный <code>SET</code> безопасен — это одна твоя сессия. В Go-сервисе с пулом соединений — только <code>SET LOCAL</code> внутри транзакции (урок 0012).</p>
+      <p>Верни как было: <code>RESET work_mem;</code></p>
+    </details>
+  </div>
+
+  <!-- ШАГ 5 -->
+  <div class="step">
+    <h2>Шаг 5. Приведение типа в ON</h2>
+    <pre><code>EXPLAIN (ANALYZE)
+SELECT o.id, c.name
+FROM orders o
+JOIN customers c ON c.id = o.customer_id
+WHERE o.customer_id = 43;
+
+EXPLAIN (ANALYZE)
+SELECT o.id, c.name
+FROM orders o
+JOIN customers c ON c.id::text = o.customer_id::text
+WHERE o.customer_id = 43;</code></pre>
+    <p class="predict"><b>Предскажи:</b> запросы логически одинаковые. Будет ли во втором использован первичный ключ <code>customers_pkey</code>?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code>-- первый
+Nested Loop  (actual time=0.151..0.505 rows=10 loops=1)
+  -&gt;  Index Scan using customers_pkey on customers c  (actual rows=1 loops=1)
+  -&gt;  Bitmap Heap Scan on orders o  (actual rows=10 loops=1)
+Execution Time: 0.627 ms
+
+-- второй
+Hash Join  (rows=5000) (actual time=0.122..32.434 rows=10 loops=1)
+  -&gt;  Seq Scan on customers c  (actual rows=100000 loops=1)       ← индекс не использован
+  -&gt;  Hash  -&gt;  Bitmap Heap Scan on orders o  (actual rows=10 loops=1)
+Execution Time: 32.523 ms</code></pre>
+      <p>Индекс построен по <code>id</code>, а не по <code>id::text</code>. Как только над колонкой появилась функция или приведение, база не может искать по индексу и читает все 100 000 клиентов. Заодно сломалась оценка: ждёт 5000 строк вместо 10.</p>
+      <p>В жизни это случается, когда в двух таблицах ключ хранится в разных типах (<code>int</code> и <code>varchar</code>). Лечение — одинаковые типы в схеме или индекс по выражению.</p>
+    </details>
+  </div>
+
+  <!-- ШАГ 6 -->
+  <div class="step">
+    <h2>Шаг 6. EXISTS против JOIN + DISTINCT</h2>
+    <pre><code>EXPLAIN (ANALYZE)
+SELECT DISTINCT c.id, c.name
+FROM customers c
+JOIN orders o ON o.customer_id = c.id;
+
+EXPLAIN (ANALYZE)
+SELECT c.id, c.name
+FROM customers c
+WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);</code></pre>
+    <p class="predict"><b>Предскажи:</b> оба возвращают 50 000 клиентов с заказами. Сколько строк выйдет из JOIN в первом запросе <b>до</b> <code>DISTINCT</code>?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code>-- JOIN + DISTINCT
+HashAggregate  (actual rows=50000)                      ← схлопнули обратно
+  Group Key: c.id, c.name
+  -&gt;  Hash Join  (actual rows=500000)                   ← размножили до 500 000
+        -&gt;  Seq Scan on orders o  (actual rows=500000)
+        -&gt;  Hash  -&gt;  Seq Scan on customers c  (actual rows=100000)
+Execution Time: 225.391 ms
+
+-- EXISTS
+Hash Join  (actual rows=50000)
+  -&gt;  Seq Scan on customers c  (actual rows=100000)
+  -&gt;  Hash
+        -&gt;  HashAggregate  (actual rows=50000)          ← сначала уникальные customer_id
+              Group Key: o.customer_id
+              -&gt;  Seq Scan on orders o  (actual rows=500000)
+Execution Time: 87.753 ms</code></pre>
+      <p>Первый запрос сначала размножил каждого клиента на все его 10 заказов (500 000 строк), а потом <code>DISTINCT</code> схлопнул их, сравнивая <code>id</code> и <code>name</code>. Это fan-out из урока 0003, только замаскированный.</p>
+      <p>С <code>EXISTS</code> планировщику понятно, что заказы нужны только как «есть или нет». Он сначала собрал 50 000 уникальных <code>customer_id</code>, а потом соединил. В 2.5 раза быстрее, и запрос честнее говорит, что ты хочешь.</p>
+    </details>
+  </div>
+
+  <h2>Уборка</h2>
+  <pre><code>\q
+docker rm -f join-lab</code></pre>
+
+  <div class="callout win">
+    Что ты теперь умеешь показать руками: <code>Seq Scan</code> по огромной таблице → индекс на FK (шаг 1–2); индекс не всегда выгоден (2б); <code>rows=1</code> против сотен тысяч → <code>ANALYZE</code> (3); <code>Batches &gt; 1</code> → <code>work_mem</code> (4); приведение типа убивает индекс (5); <code>EXISTS</code> вместо размножения и <code>DISTINCT</code> (6).
+  </div>
+
+  <p class="source-rec">Источники: <a href="https://www.postgresql.org/docs/current/using-explain.html">PostgreSQL Docs — Using EXPLAIN</a>; <a href="https://www.postgresql.org/docs/current/planner-stats.html">PostgreSQL Docs — Statistics Used by the Planner</a>; <code>InterviewPro/docs/questions/database/topic_03_joins_set_operations.md</code>; <code>InterviewPro/docs/questions/database/topic_04_indexes_execution_plans.md</code>.</p>
+
+  <div class="ask-teacher">Если план у тебя вышел не таким, как в ответе, или что-то непонятно — пришли его мне, разберём.</div>
+
+  <div class="nav-links">
+    <a href="../lessons/0014-join-performance.html">← К уроку</a>
+    <a href="../reference/0014-join-performance.html">Шпаргалка →</a>
+  </div>
+</div>
+</body>
+</html>

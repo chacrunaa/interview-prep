@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: SELECT FOR UPDATE на Read Committed</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Блокировки · Шпаргалка</p>
+  <h1>FOR UPDATE на Read Committed — шпаргалка</h1>
+
+  <p><b>Суть:</b> блокирует выбранные строки до конца транзакции. Другие UPDATE, DELETE и FOR UPDATE на этих строках ждут. Обычные SELECT не ждут.</p>
+
+  <h2>Поведение на Read Committed (PostgreSQL)</h2>
+  <ul>
+    <li>Строка занята — ждёшь коммита или отката владельца.</li>
+    <li>После ожидания строка <b>перечитывается</b>, условие <code>WHERE</code> проверяется заново.</li>
+    <li>Строка перестала подходить или удалена — пропадает из результата. Ошибки нет.</li>
+    <li>На Repeatable Read в этой же ситуации ошибка <code>40001</code> и нужен retry.</li>
+  </ul>
+
+  <h2>Нужен ли FOR UPDATE?</h2>
+  <table>
+    <tr><th>Ситуация</th><th>Решение</th></tr>
+    <tr><td>Проверку и запись можно уместить в один <code>UPDATE ... WHERE</code></td><td>Он, без блокировки</td></tr>
+    <tr><td>Читаю строку, решаю в Go, пишу</td><td><b>FOR UPDATE</b>, до любых других чтений этой строки</td></tr>
+    <tr><td>Несколько связанных строк, единая логика</td><td>FOR UPDATE, порядок <code>ORDER BY id</code></td></tr>
+    <tr><td>Очередь задач, много воркеров</td><td><code>FOR UPDATE SKIP LOCKED</code></td></tr>
+    <tr><td>Инвариант про набор или отсутствие строк</td><td>Constraint, Serializable + retry или блокировка родителя. FOR UPDATE не блокирует несуществующие строки</td></tr>
+    <tr><td>Только чтение</td><td>Обычный SELECT</td></tr>
+    <tr><td>Конфликты редки, пользователь «думает» над формой</td><td>Оптимистичная: <code>WHERE version = $n</code></td></tr>
+  </table>
+
+  <h2>Варианты</h2>
+  <table>
+    <tr><th>Вариант</th><th>Смысл</th></tr>
+    <tr><td><code>FOR UPDATE</code></td><td>Сильнейшая блокировка строки</td></tr>
+    <tr><td><code>FOR NO KEY UPDATE</code></td><td>Не мешает вставкам в дочерние таблицы по внешнему ключу</td></tr>
+    <tr><td><code>FOR SHARE</code></td><td>Читать с гарантией «не изменят», параллельный FOR SHARE можно</td></tr>
+    <tr><td><code>NOWAIT</code></td><td>Не ждать, ошибка сразу</td></tr>
+    <tr><td><code>SKIP LOCKED</code></td><td>Пропустить занятые строки</td></tr>
+    <tr><td><code>OF таблица</code></td><td>При JOIN блокировать строки только этой таблицы</td></tr>
+  </table>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>Без <code>BEGIN</code> блокировка снимается сразу после запроса.</li>
+    <li>Deadlock: блокировать в одном порядке, держать retry на <code>40P01</code>.</li>
+    <li>Не держать транзакцию долго, никаких внешних вызовов внутри.</li>
+    <li>С <code>ORDER BY</code> и <code>LIMIT</code> после ожидания результат может быть короче или в другом порядке.</li>
+    <li>Сначала блокировка, потом чтение, иначе решение принято на устаревшем значении.</li>
+    <li>MySQL InnoDB: на Repeatable Read блокирующее чтение ставит gap locks, отсюда совет использовать Read Committed.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «FOR UPDATE блокирует строки до конца транзакции. На Read Committed после ожидания строка перечитывается, и я решаю по актуальным данным без ошибок сериализации. Беру его, когда решение принимается в коде по прочитанной строке; если хватает атомарного UPDATE ... WHERE, блокировка не нужна. Порядок блокировок фиксированный, транзакция короткая.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/theory/backendinterview/db/relational/mysql/concurency.md</code>; <a href="https://www.postgresql.org/docs/current/explicit-locking.html">PostgreSQL Docs — Explicit Locking</a>; <a href="https://www.postgresql.org/docs/current/transaction-iso.html">PostgreSQL Docs — Transaction Isolation</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0005-select-for-update-read-committed.html">← К уроку</a>
+    <a href="0004-read-committed.html">Шпаргалка по Read Committed →</a>
+  </div>
+
+</div>
+</body>
+</html>

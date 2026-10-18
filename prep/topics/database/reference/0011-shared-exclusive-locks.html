@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: shared и exclusive lock</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+  <p class="kicker">Database · Блокировки · Шпаргалка</p>
+  <h1>Shared и exclusive lock — шпаргалка</h1>
+  <p><b>Суть:</b> это <code>sync.RWMutex</code> для строк. S = <code>RLock</code> (много читателей, никто не меняет), X = <code>Lock</code> (один, никто больше). Держатся до конца транзакции.</p>
+
+  <h2>Совместимость</h2>
+  <table>
+    <tr><th>Держат →<br>Хочу ↓</th><th>S</th><th>X</th></tr>
+    <tr><td><b>S</b></td><td>✅</td><td>⏳</td></tr>
+    <tr><td><b>X</b></td><td>⏳</td><td>⏳</td></tr>
+  </table>
+  <p>Совместимы только две S.</p>
+
+  <h2>В SQL</h2>
+  <table>
+    <tr><th></th><th>PostgreSQL</th><th>MySQL InnoDB</th></tr>
+    <tr><td>S</td><td><code>FOR SHARE</code></td><td><code>FOR SHARE</code> / <code>LOCK IN SHARE MODE</code></td></tr>
+    <tr><td>X</td><td><code>FOR UPDATE</code></td><td><code>FOR UPDATE</code></td></tr>
+    <tr><td>Берут X сами</td><td><code>UPDATE</code>, <code>DELETE</code></td><td><code>UPDATE</code>, <code>DELETE</code></td></tr>
+  </table>
+  <p>PostgreSQL дробит S/X на 4 режима: <code>FOR KEY SHARE</code> &lt; <code>FOR SHARE</code> &lt; <code>FOR NO KEY UPDATE</code> &lt; <code>FOR UPDATE</code>.</p>
+
+  <h2>MVCC</h2>
+  <ul>
+    <li>Обычный <code>SELECT</code> блокировок строк не берёт и никого не ждёт — читает снимок.</li>
+    <li>Ждут только блокирующие операции: <code>FOR SHARE</code>, <code>FOR UPDATE</code>, <code>UPDATE</code>, <code>DELETE</code>.</li>
+    <li>Исключение: InnoDB на Serializable превращает обычный <code>SELECT</code> в <code>FOR SHARE</code>.</li>
+    <li>Учебниковый вариант «читатель берёт S» — это изоляция на блокировках, не MVCC.</li>
+  </ul>
+
+  <h2>Когда что</h2>
+  <table>
+    <tr><th>Задача</th><th>Блокировка</th></tr>
+    <tr><td>Строка не должна измениться, пока делаю что-то рядом (родитель → потомок)</td><td><code>FOR SHARE</code></td></tr>
+    <tr><td>Собираюсь менять эту строку</td><td><code>FOR UPDATE</code> сразу</td></tr>
+    <tr><td>Просто прочитать</td><td>ничего, обычный <code>SELECT</code></td></tr>
+  </table>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li><code>FOR SHARE</code>, затем <code>UPDATE</code> той же строки параллельно — deadlock <code>40P01</code>.</li>
+    <li>«Shared запрещает другим читать» — нет, разрешает читать и брать S.</li>
+    <li>«Exclusive блокирует любые чтения» — не при MVCC.</li>
+    <li>Гранулярность отдельно от режима: строка или таблица. <code>ALTER TABLE</code> берёт сильнейшую табличную блокировку.</li>
+    <li>Intention locks (IS/IX) в InnoDB — табличная пометка, что внутри держат S/X на строках.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «Shared — много транзакций одновременно, никто не меняет. Exclusive — одна, несовместима ни с чем. Держатся до конца транзакции. В PostgreSQL это <code>FOR SHARE</code> и <code>FOR UPDATE</code>, <code>UPDATE</code> берёт X сам. Из-за MVCC обычный <code>SELECT</code> блокировок не берёт и не ждёт. Как <code>RLock</code> и <code>Lock</code> в <code>sync.RWMutex</code>.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/theory/backendinterview/db/relational/mysql/concurency.md</code>; <code>InterviewPro/docs/theory/backendinterview/db/dBTheory/transactions.md</code>; <a href="https://www.postgresql.org/docs/current/explicit-locking.html">PostgreSQL — Explicit Locking</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0011-shared-exclusive-locks.html">← К уроку</a>
+    <a href="0006-for-update-vs-update.html">Шпаргалка FOR UPDATE против UPDATE →</a>
+  </div>
+</div>
+</body>
+</html>

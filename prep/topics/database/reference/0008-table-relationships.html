@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: виды связей между таблицами</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Проектирование · Шпаргалка</p>
+  <h1>Виды связей — шпаргалка</h1>
+
+  <p><b>Суть:</b> все связи — один механизм, внешний ключ <b>на стороне «много»</b>. Вид связи задают: где лежит FK и какие ограничения на нём.</p>
+
+  <h2>Четыре случая</h2>
+  <table>
+    <tr><th>Связь</th><th>Таблиц</th><th>Как</th></tr>
+    <tr><td>1:N</td><td>2</td><td><code>user_id bigint NOT NULL REFERENCES users(id)</code> в дочерней</td></tr>
+    <tr><td>1:1</td><td>2</td><td>то же + <code>UNIQUE</code>, либо <code>user_id PRIMARY KEY REFERENCES users(id)</code></td></tr>
+    <tr><td>N:M</td><td><b>3</b></td><td>связующая: два FK + <code>PRIMARY KEY (a_id, b_id)</code>, два JOIN</td></tr>
+    <tr><td>Иерархия</td><td><b>1</b></td><td><code>parent_id bigint REFERENCES categories(id)</code>, self-join</td></tr>
+  </table>
+  <p><b>Many-to-One — не отдельный вид</b>, это 1:N со стороны ребёнка (в банке тут опечатка). Говори: три вида + самоссылка.</p>
+
+  <h2>Обязательность задаёт NULL</h2>
+  <table>
+    <tr><th>Ограничения на FK</th><th>Получилось</th></tr>
+    <tr><td><code>NOT NULL REFERENCES</code></td><td>1:N, обязательная</td></tr>
+    <tr><td><code>REFERENCES</code></td><td>0..N, необязательная</td></tr>
+    <tr><td><code>NOT NULL UNIQUE REFERENCES</code></td><td>1:1</td></tr>
+    <tr><td><code>UNIQUE REFERENCES</code></td><td>0..1</td></tr>
+  </table>
+
+  <h2>ON DELETE</h2>
+  <table>
+    <tr><th>Режим</th><th>При удалении родителя</th></tr>
+    <tr><td><code>NO ACTION</code> / <code>RESTRICT</code></td><td>запрет, пока есть дети. <b>По умолчанию</b></td></tr>
+    <tr><td><code>CASCADE</code></td><td>дети удаляются (ок для <code>order_items</code>)</td></tr>
+    <tr><td><code>SET NULL</code></td><td>ссылка обнуляется, нужен nullable FK</td></tr>
+    <tr><td><code>SET DEFAULT</code></td><td>подставляется default, он должен существовать</td></tr>
+  </table>
+
+  <h2>Индексы</h2>
+  <ul>
+    <li>Автоиндекс только у <code>PRIMARY KEY</code> и <code>UNIQUE</code>. <b><code>FOREIGN KEY</code> индекса не создаёт</b> → <code>CREATE INDEX ON orders (user_id);</code></li>
+    <li>Без него страдает и JOIN, и <code>DELETE</code> родителя (проверка детей перебором).</li>
+    <li>Составной PK работает слева направо: для обратного направления <code>CREATE INDEX ON order_items (product_id);</code></li>
+  </ul>
+
+  <h2>Связь ≠ JOIN</h2>
+  <table>
+    <tr><th></th><th>Связь</th><th>JOIN</th></tr>
+    <tr><td>Что это</td><td>свойство схемы</td><td>операция запроса</td></tr>
+    <tr><td>Когда</td><td>записана раз в DDL</td><td>на каждый запрос</td></tr>
+    <tr><td>Нужен FK</td><td>да</td><td>нет, условие любое</td></tr>
+    <tr><td>Целостность</td><td>да</td><td>нет</td></tr>
+  </table>
+
+  <h2>Ошибки на собесе</h2>
+  <ul>
+    <li>N:M между двумя таблицами — негде хранить FK.</li>
+    <li>1:1 без <code>UNIQUE</code> — это 1:N.</li>
+    <li>«Many-to-One — отдельный вид» — нет.</li>
+    <li>«FK создаёт индекс» — нет.</li>
+    <li>«FK нужен для JOIN» — нет, для целостности и каскадов.</li>
+    <li>Связующая без составного PK — молча копит дубли пар.</li>
+    <li>FK на естественный ключ (email, ИНН) — смена значения тянет каскадное обновление всех детей. Ссылайся на суррогатный <code>id</code>.</li>
+    <li>Про «кластерный индекс у PRIMARY KEY» — это MySQL/SQL Server, не PostgreSQL.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «Три вида связей, все через внешний ключ на стороне "много". 1:N — FK в дочерней. 1:1 — тот же FK плюс <code>UNIQUE</code>, чище — когда FK сам первичный ключ. N:M напрямую не выразить, нужна связующая таблица с составным PK из двух FK, туда же кладутся атрибуты связи. Плюс самоссылка для иерархии. Обязательность — <code>NOT NULL</code> на FK. Внешний ключ нужен не для JOIN, а для целостности и каскадов, и индекс на него создаётся руками.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_01_relational_sql.md</code>; <code>.../topic_03_joins_set_operations.md</code>; <code>.../topic_07_database_design_normalization.md</code>; <a href="https://www.postgresql.org/docs/current/ddl-constraints.html">PostgreSQL Docs — Constraints</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0008-table-relationships.html">← К уроку</a>
+    <a href="0001-join-types.html">Шпаргалка по видам JOIN →</a>
+  </div>
+
+</div>
+</body>
+</html>

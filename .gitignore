@@ -1,3 +1,14 @@
-reference/roast-chat/
 .idea
+.DS_Store
+
+# чужое сырьё: экспорты чатов и чужие резюме
+reference/roast-chat/
+reference/linkedin-bans-chat/
+reference/taxes-chat/
 reference/warriors
+
+# промежуточные данные разборов (корпус, куски, тезисы, скрипты прогона)
+reference/*/_work/
+
+# платный курс Балуна: сырьё, слайды, тексты, сайт
+reference/balun-sd/

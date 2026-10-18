@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: GC в Go</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Golang · Память · Шпаргалка</p>
+  <h1>Go GC — шпаргалка</h1>
+
+  <p><b>Суть:</b> конкурентный не поколенческий tricolor mark-and-sweep. От корней (стеки горутин, глобальные переменные) по указателям красит достижимое, остальное (белое) чистит в фоне. Мусор это недостижимое, а не ненужное.</p>
+
+  <h2>Цвета</h2>
+  <ul>
+    <li><b>Белый</b> — не проверен; после маркировки мусор.</li>
+    <li><b>Серый</b> — найден, ссылки не обработаны.</li>
+    <li><b>Чёрный</b> — найден, ссылки обработаны.</li>
+  </ul>
+
+  <h2>Фазы</h2>
+  <ol>
+    <li>Sweep Termination (STW, коротко)</li>
+    <li>Mark (параллельно, Write Barrier включён)</li>
+    <li>Mark Termination (STW, коротко)</li>
+    <li>Sweep (параллельно, Write Barrier выключен)</li>
+  </ol>
+
+  <h2>Ключевое</h2>
+  <table>
+    <tr><th>Что</th><th>Зачем</th></tr>
+    <tr><td>Write Barrier</td><td>не дать спрятать живой объект в чёрный; помечает серым; небольшой оверхед только в Mark</td></tr>
+    <tr><td>Non-generational</td><td>сканирует всё; выручает escape analysis (стек)</td></tr>
+    <tr><td>GOGC=100</td><td>старт сборки при росте кучи вдвое от живых данных; выше значит реже, но больше памяти</td></tr>
+    <tr><td>GOMEMLIMIT (1.19+)</td><td>мягкий лимит; GC чаще; защита от OOM в контейнере</td></tr>
+    <tr><td>GOGC=off</td><td>выключить; только для коротких утилит</td></tr>
+  </table>
+  <p>Алгоритм сменить нельзя. Диагностика (вне банка): <code>GODEBUG=gctrace=1</code>, <code>-benchmem</code>, <code>-gcflags="-m"</code>.</p>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>«Находит ненужное» — нет, недостижимое.</li>
+    <li>«Останавливает всю программу» — только две короткие STW.</li>
+    <li>Срез от большого массива держит весь массив: делать <code>copy</code>.</li>
+    <li>Рост кучи до порога GOGC не утечка; утечка это рост живых данных после GC.</li>
+  </ul>
+
+  <p class="sidenote">Источник: <code>golang/topic_08_memory_runtime.md</code>. Урок: <code>../lessons/0003-go-gc-tricolor.html</code>.</p>
+</div>
+</body>
+</html>

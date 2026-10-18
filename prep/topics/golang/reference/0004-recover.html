@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: recover</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Golang · Ошибки · Шпаргалка</p>
+  <h1>recover — шпаргалка</h1>
+
+  <p><b>Суть:</b> <code>recover()</code> останавливает панику и возвращает её значение. Работает только напрямую в <code>defer</code>-функции и только в своей горутине. После него функция завершается, а не продолжается.</p>
+
+  <h2>Правила</h2>
+  <ul>
+    <li>Вне <code>defer</code> возвращает <code>nil</code>.</li>
+    <li>Паника в любой горутине без своей защиты роняет всё приложение: <code>defer recover</code> в начале каждой горутины.</li>
+    <li>Ошибку наружу через именованный результат: <code>err = fmt.Errorf(...)</code>.</li>
+    <li>Не поймать (вне банка): <code>fatal error</code> (<code>concurrent map writes</code>, OOM, переполнение стека), <code>os.Exit</code>.</li>
+  </ul>
+
+  <h2>Где ставят</h2>
+  <ul>
+    <li>Recovery middleware HTTP-сервера (500 вместо падения).</li>
+    <li>Верх горутины-воркера и демона.</li>
+    <li>Не вместо <code>error</code>: panic/recover как try/catch это анти-паттерн.</li>
+  </ul>
+
+  <pre><code>go func() {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf("panic: %v\n%s", r, debug.Stack())
+        }
+    }()
+    work()
+}()</code></pre>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li><code>recover</code> в <code>main</code> не ловит панику в горутине.</li>
+    <li>Пустой <code>recover</code> прячет баг: логируй со стеком.</li>
+    <li>Выполнение не возвращается на строку после паники.</li>
+  </ul>
+
+  <p class="sidenote">Источник: <code>golang/topic_03_io_data.md</code>, <code>golang/topic_07_concurrency.md</code>, <code>golang/topic_10_frameworks.md</code>. Урок: <code>../lessons/0004-recover.html</code>.</p>
+</div>
+</body>
+</html>

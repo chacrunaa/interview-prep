@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: очередь и топик</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Integration · Брокеры · Шпаргалка</p>
+  <h1>Очередь и топик — шпаргалка</h1>
+
+  <p><b>Суть:</b> очередь (RabbitMQ) — раздача работы: прочитали и подтвердили — сообщение удалено. Топик (Kafka) — журнал событий: чтение его не удаляет, у каждого читателя своя закладка (offset).</p>
+
+  <h2>Запись</h2>
+  <ul>
+    <li><b>RabbitMQ:</b> продюсер → <b>Exchange</b> (+ <code>routing_key</code>) → привязки → 0..N очередей. В очередь напрямую не пишут. Надёжность: Publisher Confirms.</li>
+    <li><b>Kafka:</b> продюсер → топик → партиция по <code>hash(key) % N</code> (без ключа — round-robin) → дописывается в конец, получает offset. Надёжность: <code>acks</code>, репликация, идемпотентность.</li>
+  </ul>
+
+  <h2>Чтение</h2>
+  <table>
+    <tr><th></th><th>RabbitMQ (очередь)</th><th>Kafka (топик)</th></tr>
+    <tr><td>Модель</td><td>Push, ограничение <code>prefetch</code></td><td>Pull, <code>poll()</code></td></tr>
+    <tr><td>После чтения</td><td>ACK → удалено</td><td>commit offset → осталось до retention</td></tr>
+    <tr><td>Кто двигает место</td><td>Брокер</td><td>Консьюмер</td></tr>
+    <tr><td>Воркеры сервиса</td><td>Делят очередь, без лимита</td><td>Делят партиции, не больше их числа</td></tr>
+    <tr><td>Несколько сервисов на событие</td><td>Очередь на каждого (fanout)</td><td>Consumer group на каждого</td></tr>
+    <tr><td>Replay</td><td>Нет</td><td>Да, пока не истёк retention</td></tr>
+    <tr><td>Порядок</td><td>Одна очередь + один консьюмер</td><td>Внутри партиции (ключ)</td></tr>
+    <tr><td>Скорость</td><td>Десятки тысяч/с на узел</td><td>Миллионы/с на кластер</td></tr>
+  </table>
+
+  <h2>Выбор</h2>
+  <ul>
+    <li><b>RabbitMQ:</b> фоновые задачи (письма, PDF, биллинг), сложная маршрутизация, приоритеты, RPC.</li>
+    <li><b>Kafka:</b> логи, метрики, кликстрим, Event Sourcing, один поток для многих независимых читателей, replay.</li>
+  </ul>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>«Kafka — это быстрая очередь» — нет, это лог с offset'ами.</li>
+    <li>commit в Kafka не удаляет сообщение, удаляет только retention.</li>
+    <li>Консьюмеров в группе больше, чем партиций — лишние простаивают.</li>
+    <li>«Порядок гарантирован» — только <b>внутри партиции</b>.</li>
+    <li>«Topic» в RabbitMQ — это тип обменника с маской (<code>*</code>, <code>#</code>), а не журнал Kafka.</li>
+  </ul>
+
+  <p class="sidenote">Источник: <code>integration/topic_04_rabbitmq_amqp.md</code> (сравнение RabbitMQ и Kafka), <code>integration/topic_03_apache_kafka.md</code>. Полный урок: <code>../lessons/0001-queue-vs-topic.html</code>.</p>
+</div>
+</body>
+</html>

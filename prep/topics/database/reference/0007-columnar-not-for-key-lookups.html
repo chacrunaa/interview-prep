@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: колоночные базы и выборки по ключу</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Выбор хранилища · Шпаргалка</p>
+  <h1>Колоночные базы — шпаргалка</h1>
+
+  <p><b>Суть:</b> колоночная база хранит каждую колонку отдельно. Читает только нужные столбцы, отлично сжимает, мгновенно добавляет колонки. Строки целиком в ней нет — её собирают. Критерий выбора <b>не объём данных, а форма запросов</b>.</p>
+
+  <h2>Почему плохо по ключу</h2>
+  <ul>
+    <li><b>Разреженный индекс:</b> засечка на гранулу (тысячи строк), а не на строку. «Одна строчка» = прочитать много лишнего.</li>
+    <li><b>Сборка строки:</b> N колонок — N чтений с диска и N распаковок. <code>SELECT *</code> — худший случай.</li>
+    <li><b>Нет транзакций</b>, точечных <code>UPDATE</code>/<code>DELETE</code>, оконных функций, полноценного оптимизатора.</li>
+    <li><b>Уникальности нет:</b> <code>ReplacingMergeTree</code> дедуплицирует асинхронно, сразу после вставки видны дубли.</li>
+  </ul>
+
+  <h2>OLTP и OLAP</h2>
+  <table>
+    <tr><th></th><th>OLTP, строчные</th><th>OLAP, колоночные</th></tr>
+    <tr><td>Кто</td><td>PostgreSQL, MySQL</td><td>ClickHouse, Vertica</td></tr>
+    <tr><td>Нагрузка</td><td>поток мелких транзакций, быстрый ответ</td><td>сложные агрегации по большому объёму</td></tr>
+    <tr><td>Запросы</td><td>известны заранее, закрываются индексом</td><td>произвольные разрезы, индекс не придумать</td></tr>
+    <tr><td>Сильно в</td><td>строка по ключу, транзакции, ограничения</td><td>чтение столбцов, сжатие, ALTER колонок</td></tr>
+  </table>
+
+  <h2>Что куда</h2>
+  <table>
+    <tr><th>Таблица</th><th>Чем</th></tr>
+    <tr><td>Пользователи, товары, комментарии (по <code>id</code>)</td><td>строчная</td></tr>
+    <tr><td>Статьи с известной сортировкой по дате</td><td>строчная + индекс</td></tr>
+    <tr><td>События: корзина, клики, логи, трейсы</td><td>колоночная</td></tr>
+    <tr><td>Агрегаты по дням, категориям, ценам</td><td>колоночная</td></tr>
+  </table>
+
+  <h2>Вместе (CQRS)</h2>
+  <pre><code>Go ──запись──► PostgreSQL        (транзакции, FOR UPDATE)
+   └─событие──► Kafka ─► ClickHouse (отчёты, дашборды)</code></pre>
+  <p>Цена: <b>задержка согласованности</b>. Отчёты — ок, «покажи мой только что созданный заказ» — не ок.</p>
+
+  <h2>Не путать семейства</h2>
+  <table>
+    <tr><th></th><th>Колоночные OLAP</th><th>Wide-column</th></tr>
+    <tr><td>Кто</td><td>ClickHouse, Vertica, BigQuery, Druid</td><td>Cassandra, HBase, Bigtable</td></tr>
+    <tr><td>По ключу</td><td>плохо</td><td>хорошо, это их сценарий</td></tr>
+    <tr><td>Произвольные агрегации</td><td>хорошо</td><td>плохо, нужен заданный ключ</td></tr>
+  </table>
+
+  <h2>Ошибки на собесе</h2>
+  <ul>
+    <li>«Данных много — значит ClickHouse». Объём не критерий.</li>
+    <li>«Колоночная быстрее везде». Быстрее на агрегациях, медленнее на строке целиком.</li>
+    <li>«ClickHouse — NoSQL». Реляционный, с SQL, просто без транзакций.</li>
+    <li>Назвать выгоду без механизма: сжимает — <b>потому что</b> в колонке однотипные значения; читает мало — <b>потому что</b> лишние колонки не трогает.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «Колоночная хранит колонки отдельно: читает только нужные столбцы и хорошо сжимает — выигрыш на агрегациях. Но строки целиком нет, индекс разреженный по гранулам, транзакций и точечных UPDATE нет. Если запросы известны и идут по ключу, строчная база с индексом дешевле. Продуктовое — в PostgreSQL, события и агрегаты — в ClickHouse, то есть CQRS ценой задержки согласованности.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/theory/backendinterview/db/column/clickhouse.md</code>; <code>.../db/column/index.md</code>; <code>InterviewPro/docs/questions/database/topic_07_database_design_normalization.md</code>; <code>InterviewPro/docs/questions/architecture/topic_04_cqrs_eventsourcing.md</code>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0007-columnar-not-for-key-lookups.html">← К уроку</a>
+    <a href="0006-for-update-vs-update.html">Шпаргалка по FOR UPDATE против UPDATE →</a>
+  </div>
+
+</div>
+</body>
+</html>

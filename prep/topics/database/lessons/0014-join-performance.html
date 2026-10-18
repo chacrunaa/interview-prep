@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ускорение JOIN</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · PostgreSQL · Производительность</p>
+  <h1>Как ускорить JOIN: сначала план, потом рычаг</h1>
+  <p class="lede">Одна победа этого урока: на вопрос «как ускорить JOIN» ты отвечаешь не списком советов, а <b>порядком действий</b>: смотрю <code>EXPLAIN ANALYZE</code> → вижу, какой алгоритм выбран и где он страдает → дёргаю рычаг, который лечит именно эту беду. Рычагов всего пять: индекс, меньше строк, «честное» условие, статистика, память.</p>
+
+  <p class="sidenote">В уроке <a href="0003-joins-in-business.html">«JOIN в бизнесе»</a> три алгоритма были таблицей в «Опасности 4». Здесь мы учимся их узнавать в плане запроса и лечить. Это вопрос банка «Какие 3 физических алгоритма выполнения JOIN использует оптимизатор?» плюс «Как проанализировать запрос?» из темы про индексы.</p>
+
+  <h2>Аналогия</h2>
+  <p>Тебе дали две пачки карточек: 50 заказов и 5 миллионов позиций заказов. Надо разложить позиции по заказам. Есть три способа:</p>
+  <ul>
+    <li><b>Nested Loop</b> — берёшь заказ и ищешь его позиции в пачке. Если пачка позиций <b>разложена по номерам заказа с оглавлением</b> (индекс), это 50 быстрых заглядываний. Если нет — 50 раз перебираешь 5 миллионов карточек.</li>
+    <li><b>Hash Join</b> — выписываешь 50 номеров заказов на листок-словарь, а потом <b>один раз</b> проходишь всю пачку позиций и для каждой смотришь в листок. Отлично, если листок помещается на столе (в памяти). Не помещается — раскладываешь по коробкам на полу (на диске), и всё замедляется.</li>
+    <li><b>Merge Join</b> — обе пачки уже отсортированы по номеру заказа: ведёшь два пальца сверху вниз одновременно. Быстро, но если пачки не отсортированы, сначала придётся сортировать.</li>
+  </ul>
+  <p>Ускорить JOIN — значит <b>понять, каким способом база сейчас раскладывает карточки, и убрать то, что ей мешает</b>. Гадать без плана — бессмысленно.</p>
+
+  <h2>Формально: три алгоритма и их слабое место</h2>
+  <table>
+    <tr><th>Алгоритм</th><th>Хорош, когда</th><th>Слабое место</th><th>Рычаг</th></tr>
+    <tr><td>Nested Loop</td><td>снаружи мало строк, внутри индекс по ключу</td><td>нет индекса внутри; база ошиблась и снаружи строк на самом деле много</td><td>индекс, статистика</td></tr>
+    <tr><td>Hash Join</td><td>много строк, соединение по <code>=</code></td><td>хэш-таблица не влезла в <code>work_mem</code> и ушла на диск</td><td>меньше строк и колонок, <code>work_mem</code></td></tr>
+    <tr><td>Merge Join</td><td>обе стороны уже отсортированы (часто по индексу)</td><td>сортировка большого объёма, особенно на диске</td><td>индекс, дающий порядок; <code>work_mem</code></td></tr>
+  </table>
+  <p>Выбирает алгоритм <b>планировщик</b> — по оценке, сколько строк придёт с каждой стороны. Эту оценку он берёт из <b>статистики</b> таблицы. Запомни эту цепочку: <b>статистика → оценка строк → выбор алгоритма</b>. Половина медленных JOIN ломается в её начале.</p>
+
+  <h2>Шаг 0: измерить</h2>
+  <pre><code>EXPLAIN (ANALYZE, BUFFERS)
+SELECT o.id, i.sku, i.qty
+FROM orders o
+JOIN order_items i ON i.order_id = o.id
+WHERE o.customer_id = 43;</code></pre>
+  <p><code>EXPLAIN</code> показывает план и <b>оценки</b>, <code>ANALYZE</code> реально выполняет запрос и добавляет <b>фактические</b> цифры, <code>BUFFERS</code> — сколько страниц прочитано. На что смотреть:</p>
+  <ul>
+    <li><b>Тип узла соединения:</b> <code>Nested Loop</code>, <code>Hash Join</code> или <code>Merge Join</code>.</li>
+    <li><b><code>rows=</code> в оценке против <code>rows=</code> в actual.</b> Расхождение в сотни раз — проблема статистики.</li>
+    <li><b><code>Seq Scan</code> по большой таблице</b>, из которой в итоге нужно мало строк, — кандидат на индекс.</li>
+    <li><b><code>loops=</code></b> — сколько раз выполнился узел. Внутренняя сторона Nested Loop выполняется столько раз, сколько строк снаружи.</li>
+    <li><b><code>Batches: 8</code></b> у Hash или <b><code>Sort Method: external merge Disk</code></b> — не хватило памяти.</li>
+  </ul>
+
+  <div id="quiz-1"></div>
+
+  <h2>Рычаг 1: индекс на ключ соединения</h2>
+  <p>Самый частый случай. Вот план того запроса:</p>
+  <pre><code>Hash Join  (actual time=0.129..146.551 rows=40 loops=1)
+  Hash Cond: (i.order_id = o.id)
+  -&gt;  Seq Scan on order_items i  (actual rows=2000000 loops=1)     -- прочитали 2 млн
+  -&gt;  Hash
+        -&gt;  Bitmap Heap Scan on orders o  (actual rows=10 loops=1)
+Execution Time: 146.601 ms</code></pre>
+  <p>Чтобы найти 40 позиций, база прочитала все 2 миллиона. Причина: по <code>order_items.order_id</code> нет индекса. Важно: <b>PostgreSQL не создаёт индекс на колонку внешнего ключа автоматически</b> — только на первичный ключ и <code>UNIQUE</code>. Это надо делать руками.</p>
+  <pre><code>CREATE INDEX CONCURRENTLY order_items_order_id_idx ON order_items (order_id);</code></pre>
+  <pre><code>Nested Loop  (actual time=0.036..0.349 rows=40 loops=1)
+  -&gt;  Bitmap Heap Scan on orders o  (actual rows=10 loops=1)
+  -&gt;  Index Scan using order_items_order_id_idx on order_items i  (actual rows=4 loops=10)
+Execution Time: 0.424 ms</code></pre>
+  <p>Тот же запрос, в 350 раз быстрее: планировщик сам сменил Hash Join на Nested Loop, потому что теперь 10 заглядываний по индексу дешевле одного полного прохода. <code>CONCURRENTLY</code> — чтобы не блокировать запись в таблицу на время построения индекса на живой базе.</p>
+  <p>Усиления того же рычага: <b>составной индекс</b> <code>(order_id, created_at)</code>, если по правой таблице ещё и фильтруют (правило левого префикса из банка); <b>покрывающий индекс</b> <code>... INCLUDE (sku, qty)</code>, чтобы получить <code>Index Only Scan</code> и не ходить в таблицу вовсе.</p>
+
+  <h2>Рычаг 2: меньше строк и колонок на входе</h2>
+  <ul>
+    <li><b>Фильтруй как можно раньше.</b> Селективный <code>WHERE</code> по одной из таблиц уменьшает то, что вообще идёт в соединение. Планировщик обычно сам проталкивает фильтры вниз, но только если они написаны так, что их можно протолкнуть.</li>
+    <li><b>Не тащи <code>SELECT *</code>.</b> Для Hash Join в память кладутся строки целиком — узкие строки = маленькая хэш-таблица = не уходит на диск.</li>
+    <li><b>Агрегируй до соединения.</b> Это лечение fan-out из урока 0003, и заодно ускорение: соединяешь 50 строк агрегата, а не 5 миллионов строк.</li>
+    <li><b>Нужна только проверка наличия — пиши <code>EXISTS</code>, а не <code>JOIN</code> + <code>DISTINCT</code>.</b> <code>EXISTS</code> останавливается на первом совпадении (semi-join), а <code>JOIN</code> сначала размножает строки, потом <code>DISTINCT</code> их схлопывает.</li>
+  </ul>
+  <pre><code>-- медленно: размножили, потом схлопнули
+SELECT DISTINCT c.id, c.name
+FROM customers c JOIN orders o ON o.customer_id = c.id;
+
+-- быстро: хватает первого заказа
+SELECT c.id, c.name
+FROM customers c
+WHERE EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);</code></pre>
+
+  <h2>Рычаг 3: условие соединения, которое может использовать индекс</h2>
+  <p>Из урока 0003: индекс не работает, если над колонкой <b>функция</b> или <b>приведение типа</b>.</p>
+  <pre><code>-- индекс по b.email бесполезен
+... JOIN b ON lower(a.email) = b.email
+... JOIN b ON a.user_id::text = b.user_ref        -- разные типы у колонок
+
+-- лечение: одинаковые типы в схеме или индекс по выражению
+CREATE INDEX ON a (lower(email));</code></pre>
+  <p>Ещё: Hash Join и Merge Join работают только для <b>равенства</b>. <code>ON a.ts BETWEEN b.start AND b.end</code> оставляет только Nested Loop — тут без индекса по диапазону совсем плохо.</p>
+
+  <div id="quiz-2"></div>
+
+  <h2>Рычаг 4: статистика</h2>
+  <p>Коварный случай — индекс есть, а запрос всё равно медленный:</p>
+  <pre><code>Nested Loop  (rows=1) (actual rows=100000 loops=1)
+  Join Filter: (im.sku = p.sku)
+  Rows Removed by Join Filter: 99900000
+  -&gt;  Seq Scan on imports im  (rows=1) (actual rows=100000 loops=1)
+  -&gt;  Seq Scan on products p  (actual rows=1000 loops=100000)
+Execution Time: 6939 ms</code></pre>
+  <p>Планировщик думал, что снаружи <b>1 строка</b> (<code>rows=1</code>), и выбрал Nested Loop: «один раз пройду 1000 товаров». А пришло 100 тысяч — и справочник товаров перечитан 100 тысяч раз. Так бывает сразу после массовой загрузки: autovacuum ещё не успел обновить статистику.</p>
+  <pre><code>ANALYZE imports;   -- пересчитать статистику: Hash Join, 17 ms вместо 6.9 s</code></pre>
+  <p>Тонкость: если внутри Nested Loop дешёвый поиск по первичному ключу из кэша, ошибка оценки почти не стреляет. Больно, когда внутренняя сторона дорогая — полный проход или тяжёлый поиск на каждую строку снаружи.</p>
+  <p>Для Go-сервиса практическое правило: <b>после массового импорта в той же джобе делай <code>ANALYZE</code> таблицы</b>, не жди autovacuum. Если ошибка оценки из-за связанных колонок (город и индекс всегда ходят вместе) — помогает <code>CREATE STATISTICS</code> по этим колонкам.</p>
+
+  <h2>Рычаг 5: память</h2>
+  <pre><code>Hash  Buckets: 262144  Batches: 4  Memory Usage: 6928kB      -- 500 000 заказов, work_mem = 4MB</code></pre>
+  <p><code>Batches: 4</code> значит, что хэш-таблица не влезла в <code>work_mem</code> (по умолчанию 4 МБ) и была разрезана на 4 куска через диск. С <code>work_mem = '256MB'</code> на стенде стало <code>Batches: 1</code> и вдвое быстрее. Можно поднять память <b>для одного тяжёлого запроса</b>:</p>
+  <pre><code>err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+    if _, err := tx.Exec(ctx, `SET LOCAL work_mem = '256MB'`); err != nil { // только этой транзакции
+        return err
+    }
+    rows, err := tx.Query(ctx, reportSQL)
+    // ...
+})</code></pre>
+  <p><code>SET LOCAL</code>, а не <code>SET</code> — ровно по причине из урока 0012: иначе настройка утечёт на соединение в пуле. И не поднимай <code>work_mem</code> глобально «на всякий случай»: он выделяется <b>на каждую операцию сортировки или хэша в каждом соединении</b>, 100 соединений × несколько операций × 256 МБ — и сервер упал по памяти.</p>
+
+  <div id="quiz-3"></div>
+
+  <h2>Когда рычаги кончились: менять задачу</h2>
+  <ul>
+    <li><b>Тяжёлый отчёт по многим таблицам</b>, который не обязан быть до секунды свежим, — <b>материализованное представление</b> (<code>MATERIALIZED VIEW</code>) с периодическим <code>REFRESH</code>, или денормализованная колонка.</li>
+    <li><b>Аналитика по миллиардам строк</b> — это уже не к PostgreSQL, а к колоночной базе (урок 0007).</li>
+    <li><b>На стороне Go</b>: N+1 — это тоже «медленный JOIN», только размазанный по сети. 1000 запросов в цикле меняются на один <code>JOIN</code> или на один запрос <code>WHERE order_id = ANY($1)</code> с массивом id и сборку в map в коде.</li>
+  </ul>
+
+  <h2>Частая ошибка на собесе</h2>
+  <p><b>Начать с «добавлю индексы».</b> Сильный ответ начинается с «посмотрю <code>EXPLAIN ANALYZE</code>»: без плана непонятно, какой индекс нужен и нужен ли он вообще. Каждый индекс замедляет запись.</p>
+  <p><b>«JOIN медленный, лучше переписать на подзапрос».</b> Для PostgreSQL <code>JOIN</code> и эквивалентный подзапрос часто дают один и тот же план. Ускоряет не синтаксис, а то, сколько строк и каким алгоритмом обрабатывается. Исключение, которое стоит назвать, — <code>EXISTS</code> вместо <code>JOIN</code> + <code>DISTINCT</code>.</p>
+  <p><b>«Внешний ключ даёт индекс».</b> В PostgreSQL — нет. Индекс на FK-колонку создают руками.</p>
+  <p><b>«Подскажу планировщику, какой JOIN использовать».</b> В PostgreSQL нет хинтов (без расширений). Планировщику не приказывают, а дают ему верную статистику и подходящие индексы.</p>
+  <p><b>Смотреть только на <code>EXPLAIN</code> без <code>ANALYZE</code>.</b> Там одни оценки. Главная находка — расхождение оценки и факта — видна только с <code>ANALYZE</code>.</p>
+
+  <div class="callout">
+    Формулировка для собеса: «Сначала смотрю <code>EXPLAIN (ANALYZE, BUFFERS)</code>: какой алгоритм выбран — Nested Loop, Hash или Merge, — где расходятся оценка и факт по строкам и где большие <code>Seq Scan</code> или уход на диск. Дальше по ситуации. Самое частое — индекс на ключ соединения: PostgreSQL не создаёт его для внешнего ключа сам. Дальше — уменьшить вход: фильтр раньше, только нужные колонки, агрегация до соединения, <code>EXISTS</code> вместо <code>JOIN</code> с <code>DISTINCT</code>. Проверяю, что условие соединения без функций и с одинаковыми типами, иначе индекс не работает. Если оценка строк врёт — <code>ANALYZE</code>. Если хэш или сортировка уходят на диск — <code>SET LOCAL work_mem</code> для конкретного запроса. А для тяжёлых отчётов — материализованное представление.»
+  </div>
+
+  <div id="quiz-4"></div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_03_joins_set_operations.md</code> (три физических алгоритма JOIN и когда каждый хорош); <code>InterviewPro/docs/questions/database/topic_04_indexes_execution_plans.md</code> (покрывающий индекс, правило левого префикса, когда полный скан выгоднее индекса, <code>EXPLAIN</code> / <code>EXPLAIN ANALYZE</code>); <a href="https://www.postgresql.org/docs/current/using-explain.html">PostgreSQL Docs — Using EXPLAIN</a> (чтение плана, <code>rows</code>, <code>loops</code>, <code>Batches</code>); <a href="https://www.postgresql.org/docs/current/planner-stats.html">PostgreSQL Docs — Statistics Used by the Planner</a> (<code>ANALYZE</code>, <code>CREATE STATISTICS</code>); <a href="https://www.postgresql.org/docs/current/ddl-constraints.html">PostgreSQL Docs — Constraints</a> (индекс на ссылающиеся колонки FK не создаётся автоматически).</p>
+
+  <div class="callout win">Хочешь увидеть всё это руками? <a href="../labs/0014-join-performance.html">Практика к уроку</a>: стенд в Docker и шесть шагов «введи → предскажи → проверь».</div>
+
+  <div class="ask-teacher">Если что-то из этого осталось непонятным — просто спроси, разберём отдельно.</div>
+
+  <div class="nav-links">
+    <a href="../reference/0014-join-performance.html">Шпаргалка по теме →</a>
+    <a href="0003-joins-in-business.html">← JOIN в бизнесе</a>
+  </div>
+</div>
+<script src="../../../assets/quiz.js"></script>
+<script>
+new Quiz(document.getElementById('quiz-1'), {
+  prompt: 'В плане у узла: rows=1 (оценка), actual rows=480000. Что это прежде всего говорит?',
+  options: [
+    'Статистика устарела, и алгоритм выбран неверно',
+    'Не хватает work_mem, и данные ушли на диск',
+    'Нет индекса на ключ соединения у этой таблицы'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — планировщик ошибся в оценке в сотни тысяч раз, а алгоритм он выбирает именно по оценке. Первое лекарство — ANALYZE таблицы.',
+    incorrect: 'Неверно. Уход на диск видно по Batches или external merge, отсутствие индекса — по Seq Scan. Расхождение оценки и факта — это статистика, лечится ANALYZE.'
+  }
+});
+new Quiz(document.getElementById('quiz-2'), {
+  prompt: 'Нужен список клиентов, у которых есть хотя бы один заказ. Какой запрос обычно быстрее?',
+  options: [
+    'WHERE EXISTS (SELECT 1 FROM orders WHERE ...)',
+    'SELECT DISTINCT ... JOIN orders ON ...',
+    'LEFT JOIN orders ... WHERE orders.id IS NULL'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — EXISTS останавливается на первом найденном заказе. JOIN сначала размножит клиента на все его заказы, а DISTINCT потом схлопнет.',
+    incorrect: 'Неверно. JOIN + DISTINCT делает лишнюю работу: размножает, потом схлопывает. А LEFT JOIN ... IS NULL вернёт как раз клиентов без заказов. Нужен EXISTS.'
+  }
+});
+new Quiz(document.getElementById('quiz-3'), {
+  prompt: 'У Hash в плане видно Batches: 4. Как правильно ускорить именно этот отчётный запрос из Go?',
+  options: [
+    'SET LOCAL work_mem внутри транзакции запроса',
+    'Поднять work_mem глобально в конфиге базы',
+    'SET work_mem отдельным вызовом pool.Exec'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — память поднимается только для этой транзакции и не утекает на другие соединения пула.',
+    incorrect: 'Неверно. Глобальный work_mem умножается на число операций и соединений — риск упасть по памяти. SET через pool.Exec утечёт на соединение в пуле. Нужен SET LOCAL в транзакции.'
+  }
+});
+new Quiz(document.getElementById('quiz-4'), {
+  prompt: 'Таблица order_items с внешним ключом order_id на orders. Есть ли индекс по order_items.order_id?',
+  options: [
+    'Нет, в PostgreSQL его надо создать вручную',
+    'Да, PostgreSQL создаёт его вместе с FK сам',
+    'Да, если orders.id первичный ключ таблицы'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — PostgreSQL индексирует только PRIMARY KEY и UNIQUE. На ссылающуюся колонку FK индекс создают руками, и это самый частый рычаг для JOIN.',
+    incorrect: 'Неверно. Индекс на orders.id есть (это PK), но на ссылающейся стороне order_items.order_id его нет, пока не создашь CREATE INDEX сам.'
+  }
+});
+</script>
+</body>
+</html>

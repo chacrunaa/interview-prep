@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GROUP BY и ORDER BY</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · SQL · Запросы и агрегация</p>
+  <h1>GROUP BY и ORDER BY: один схлопывает, другой переставляет</h1>
+  <p class="lede">Одна победа этого урока: ты задаёшь себе один вопрос — <b>«после этого изменится число строк?»</b> — и сразу знаешь, что нужно. Меняется (была тысяча продаж, стало четыре клиента) — это <code>GROUP BY</code>. Не меняется, просто другой порядок — <code>ORDER BY</code>. И главное следствие: <b><code>GROUP BY</code> ничего не сортирует</b>.</p>
+
+  <p class="sidenote">Вопросы банка: «Что такое GROUP BY?», «Что такое ORDER BY?», «Каков порядок логического выполнения SQL-запроса?», «Чем WHERE отличается от HAVING?». Все примеры ниже сняты с живого PostgreSQL 16 — их можно повторить руками в <a href="../labs/0015-group-by-order-by.html">практике к уроку</a>.</p>
+
+  <h2>Аналогия</h2>
+  <p>На столе куча чеков за неделю.</p>
+  <ul>
+    <li><b><code>ORDER BY</code></b> — разложить чеки по сумме, от большего к меньшему. <b>Все чеки на месте</b>, каждый виден, просто лежат в другом порядке.</li>
+    <li><b><code>GROUP BY</code></b> — разложить чеки по конвертам, по конверту на покупателя, и на каждом конверте написать итог: «3 чека, 2100 ₽». Дальше ты работаешь с <b>конвертами</b>. Отдельный чек уже не видно — только то, что написано на конверте.</li>
+  </ul>
+  <p>И ещё: конверты после раскладки лежат <b>как попало</b>. Если нужен порядок конвертов — их надо отдельно отсортировать. Это и есть <code>GROUP BY</code> + <code>ORDER BY</code> вместе.</p>
+  <p>Аналогия для Go: результат <code>GROUP BY</code> без <code>ORDER BY</code> похож на обход <code>map</code> через <code>range</code> — все ключи на месте, но порядок никто не обещал.</p>
+
+  <h2>Формально</h2>
+  <table>
+    <tr><th></th><th>GROUP BY</th><th>ORDER BY</th></tr>
+    <tr><td>Что делает</td><td>собирает строки с одинаковым значением в одну строку-группу</td><td>упорядочивает строки результата</td></tr>
+    <tr><td>Число строк</td><td><b>меняется</b>: одна строка на группу</td><td><b>не меняется</b></td></tr>
+    <tr><td>Зачем</td><td>посчитать итог по группе: <code>count</code>, <code>sum</code>, <code>avg</code>, <code>max</code></td><td>показать в нужном порядке, взять «топ-N» с <code>LIMIT</code>, стабильная пагинация</td></tr>
+    <tr><td>Что можно в <code>SELECT</code></td><td>только колонки группировки и агрегаты</td><td>что угодно</td></tr>
+    <tr><td>Шаг логического выполнения</td><td>5-й, после <code>WHERE</code></td><td>10-й, почти в самом конце, после <code>SELECT</code></td></tr>
+  </table>
+
+  <h2>Пример: 10 продаж</h2>
+  <p><code>ORDER BY</code> — 10 строк было, 10 и осталось:</p>
+  <pre><code>SELECT * FROM sales ORDER BY amount DESC;
+--  id | customer | category | amount
+--   2 | Боря     | техника  |   3000
+--   8 | Вика     | техника  |   2500
+--   9 | Боря     | одежда   |   1500
+--  ... ещё 7 строк
+-- (10 rows)</code></pre>
+  <p><code>GROUP BY</code> — 10 продаж схлопнулись в 4 клиента:</p>
+  <pre><code>SELECT customer, count(*) AS cnt, sum(amount) AS total
+FROM sales
+GROUP BY customer;
+--  customer | cnt | total
+--  Аня      |   3 |  2100
+--  Вика     |   3 |  3600
+--  Боря     |   3 |  5200
+--  Гоша     |   1 |   900
+-- (4 rows)</code></pre>
+  <p>Посмотри на порядок: Аня, Вика, Боря, Гоша. Не по алфавиту, не по сумме. Это не ошибка — так работает группировка через хэш-таблицу (в плане <code>HashAggregate</code>, тот же «хэш», что в Hash Join из урока 0014). Порядок групп ничем не гарантирован.</p>
+
+  <div id="quiz-1"></div>
+
+  <h2>Правило колонок в GROUP BY</h2>
+  <p>После группировки на каждого клиента одна строка. Если попросить ещё и <code>category</code> — какую из трёх категорий Ани показать? База не угадывает, а падает:</p>
+  <pre><code>SELECT customer, category, sum(amount) FROM sales GROUP BY customer;
+-- ERROR:  column "sales.category" must appear in the GROUP BY clause
+--         or be used in an aggregate function</code></pre>
+  <p>Правило: <b>каждая колонка в <code>SELECT</code> либо есть в <code>GROUP BY</code>, либо внутри агрегата</b>. Хочешь категорию — добавь её в группировку (<code>GROUP BY customer, category</code>, групп станет больше) или агрегируй (<code>string_agg(category, ', ')</code>, <code>max(category)</code>).</p>
+  <p>Исключение, которое отличает уверенный ответ: если группировать по <b>первичному ключу</b>, PostgreSQL разрешает остальные колонки этой таблицы без агрегата — они однозначно определяются ключом. <code>SELECT id, customer, amount FROM sales GROUP BY id</code> работает.</p>
+
+  <h2>Вместе: сначала конверты, потом порядок</h2>
+  <p>Самый частый реальный запрос — «топ клиентов по выручке»:</p>
+  <pre><code>SELECT customer, sum(amount) AS total
+FROM sales
+GROUP BY customer          -- 10 продаж → 4 клиента
+ORDER BY total DESC        -- 4 клиента по убыванию суммы
+LIMIT 2;                   -- первые два
+--  customer | total
+--  Боря     |  5200
+--  Вика     |  3600</code></pre>
+  <p>Здесь видно, почему порядок шагов важен. <code>ORDER BY</code> выполняется после <code>SELECT</code>, поэтому в нём доступен алиас <code>total</code>. А <code>WHERE</code> выполняется до группировки и до <code>SELECT</code> — там никакого <code>total</code> ещё нет:</p>
+  <pre><code>SELECT customer, sum(amount) AS total FROM sales WHERE total &gt; 2000 GROUP BY customer;
+-- ERROR:  column "total" does not exist
+
+-- фильтр по группам - это HAVING, он после GROUP BY
+SELECT customer, sum(amount) AS total
+FROM sales
+GROUP BY customer
+HAVING sum(amount) &gt; 2000
+ORDER BY total DESC;
+--  Боря 5200 / Вика 3600 / Аня 2100</code></pre>
+  <p>Цепочка для собеса: <b><code>FROM</code> → <code>WHERE</code> (строки) → <code>GROUP BY</code> (конверты) → <code>HAVING</code> (конверты) → <code>SELECT</code> → <code>ORDER BY</code> → <code>LIMIT</code></b>.</p>
+  <p>И ещё следствие из того же порядка: после <code>GROUP BY</code> в <code>ORDER BY</code> тоже можно только колонки группировки и агрегаты. <code>GROUP BY customer ORDER BY sold_on</code> падает той же ошибкой — по какой дате сортировать конверт с тремя чеками?</p>
+
+  <div id="quiz-2"></div>
+
+  <h2>Две тонкости ORDER BY, полезные в Go-сервисе</h2>
+  <p><b>1. Одинаковые значения — порядок между ними не определён.</b></p>
+  <pre><code>SELECT id, sold_on, amount FROM sales ORDER BY sold_on LIMIT 3;
+--  2 | 2026-10-01 | 3000      ← сначала id 2
+--  1 | 2026-10-01 |  500
+--  3 | 2026-10-02 | 1200</code></pre>
+  <p>У продаж 1 и 2 одна дата, и база вправе отдать их в любом порядке. Для пагинации это баг: на второй странице строка может повториться, а другая потеряться. Лечится уникальным «добивающим» полем:</p>
+  <pre><code>SELECT id, sold_on, amount FROM sales ORDER BY sold_on, id LIMIT 3;
+--  1 | 2026-10-01 |  500
+--  2 | 2026-10-01 | 3000
+--  3 | 2026-10-02 | 1200</code></pre>
+  <p><b>2. <code>NULL</code> при сортировке.</b> <code>GROUP BY</code> собирает все <code>NULL</code> в одну группу. А <code>ORDER BY</code> в PostgreSQL считает <code>NULL</code> больше любого значения: при <code>ASC</code> они в конце, при <code>DESC</code> — в начале. Управляется явно: <code>ORDER BY category NULLS LAST</code>.</p>
+  <p>И сам Go-код: порядок из базы сохраняется, только пока ты складываешь строки в слайс. Положишь в <code>map</code> — порядок пропадёт, как в аналогии выше.</p>
+  <pre><code>rows, err := db.Query(ctx, `
+    SELECT customer, sum(amount) AS total
+    FROM sales
+    GROUP BY customer
+    ORDER BY total DESC, customer`)   // порядок задаёт SQL, тай-брейк по имени
+// ...
+var top []CustomerTotal               // слайс, а не map - порядок сохранится
+for rows.Next() {
+    var t CustomerTotal
+    if err := rows.Scan(&amp;t.Customer, &amp;t.Total); err != nil {
+        return nil, err
+    }
+    top = append(top, t)
+}</code></pre>
+
+  <div id="quiz-3"></div>
+
+  <h2>Частая ошибка на собесе</h2>
+  <p><b>«GROUP BY сортирует результат».</b> Нет. В старом MySQL 5.x он действительно сортировал неявно, отсюда миф, но MySQL 8 и PostgreSQL этого не обещают. Нужен порядок — пиши <code>ORDER BY</code>.</p>
+  <p><b>«GROUP BY — это как DISTINCT».</b> Похоже только на поверхности: <code>GROUP BY</code> без агрегатов действительно убирает дубли. Но смысл <code>GROUP BY</code> — посчитать что-то по группе.</p>
+  <p><b>Фильтровать агрегат в <code>WHERE</code>.</b> <code>WHERE sum(amount) &gt; 2000</code> — ошибка: <code>WHERE</code> работает до группировки. Для групп — <code>HAVING</code>.</p>
+  <p><b>Пагинация по неуникальному полю.</b> <code>ORDER BY created_at LIMIT 20 OFFSET 20</code> без <code>id</code> в конце — дубли и пропуски между страницами.</p>
+
+  <div class="callout">
+    Формулировка для собеса: «<code>GROUP BY</code> схлопывает строки в группы — одна строка на группу — и нужен, чтобы посчитать агрегаты: <code>count</code>, <code>sum</code>, <code>avg</code>. В <code>SELECT</code> после него можно только колонки группировки и агрегаты. <code>ORDER BY</code> число строк не меняет, только упорядочивает, и выполняется почти последним — поэтому в нём доступны алиасы из <code>SELECT</code>. <code>GROUP BY</code> порядок не гарантирует, так что если он нужен — добавляю <code>ORDER BY</code>, а для пагинации ещё и уникальный тай-брейк вроде <code>id</code>. Фильтр по строкам — <code>WHERE</code>, по группам — <code>HAVING</code>.»
+  </div>
+
+  <div id="quiz-4"></div>
+
+  <div class="callout win">Хочешь увидеть всё это руками? <a href="../labs/0015-group-by-order-by.html">Практика к уроку</a>: 10 строк, семь шагов «введи → предскажи → проверь», загрузка меньше секунды.</div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_02_queries_aggregations.md</code> (логический порядок выполнения запроса; WHERE против HAVING; «Что такое ORDER BY / GROUP BY»; сортировка по нескольким столбцам; оконные функции против GROUP BY); <a href="https://www.postgresql.org/docs/current/queries-table-expressions.html">PostgreSQL Docs — Table Expressions</a> (раздел про GROUP BY и HAVING, функциональная зависимость от первичного ключа); <a href="https://www.postgresql.org/docs/current/queries-order.html">PostgreSQL Docs — Sorting Rows (ORDER BY)</a> (NULLS FIRST/LAST, порядок без ORDER BY не гарантирован).</p>
+
+  <div class="ask-teacher">Если что-то из этого осталось непонятным — просто спроси, разберём отдельно.</div>
+
+  <div class="nav-links">
+    <a href="../reference/0015-group-by-vs-order-by.html">Шпаргалка по теме →</a>
+    <a href="0014-join-performance.html">← Как ускорить JOIN</a>
+  </div>
+</div>
+<script src="../../../assets/quiz.js"></script>
+<script>
+new Quiz(document.getElementById('quiz-1'), {
+  prompt: 'В таблице 1000 заказов от 37 клиентов. Сколько строк вернёт SELECT customer_id, count(*) FROM orders GROUP BY customer_id?',
+  options: [
+    '37: по одной строке на каждого клиента',
+    '1000: GROUP BY только переставляет строки',
+    '1: count(*) всегда возвращает одну строку'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — GROUP BY схлопывает строки: одна строка на группу. Переставляет без схлопывания ORDER BY.',
+    incorrect: 'Неверно. GROUP BY делает одну строку на каждое уникальное значение customer_id — 37. Одна строка была бы без GROUP BY.'
+  }
+});
+new Quiz(document.getElementById('quiz-2'), {
+  prompt: 'Почему ORDER BY total работает, а WHERE total > 2000 падает, если total — алиас из SELECT?',
+  options: [
+    'ORDER BY выполняется после SELECT, WHERE — до него',
+    'В WHERE алиасы надо брать в двойные кавычки',
+    'WHERE не умеет сравнивать числа из агрегатов'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — порядок логического выполнения: WHERE → GROUP BY → HAVING → SELECT → ORDER BY. Для фильтра по агрегату есть HAVING.',
+    incorrect: 'Неверно. Дело в порядке выполнения: WHERE отрабатывает раньше SELECT, алиаса ещё нет. ORDER BY идёт после SELECT. Фильтр по агрегату — HAVING.'
+  }
+});
+new Quiz(document.getElementById('quiz-3'), {
+  prompt: 'API отдаёт страницы: ORDER BY created_at LIMIT 20 OFFSET 20. Пользователи жалуются на дубли между страницами. Что исправить?',
+  options: [
+    'Добавить уникальный тай-брейк: ORDER BY created_at, id',
+    'Заменить ORDER BY на GROUP BY created_at, он стабильнее',
+    'Убрать ORDER BY: база и так отдаёт в порядке вставки'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — при одинаковом created_at порядок не определён, и строки «прыгают» между страницами. Уникальный id делает порядок однозначным.',
+    incorrect: 'Неверно. GROUP BY вообще не сортирует, а без ORDER BY порядок не гарантирован. Нужен уникальный тай-брейк: ORDER BY created_at, id.'
+  }
+});
+new Quiz(document.getElementById('quiz-4'), {
+  prompt: 'Запрос SELECT customer, sum(amount) FROM sales GROUP BY customer без ORDER BY. В каком порядке придут клиенты?',
+  options: [
+    'Порядок не гарантирован, нужен явный ORDER BY',
+    'По алфавиту: GROUP BY сортирует ключ группы',
+    'По сумме: GROUP BY сортирует по агрегату'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — на стенде пришло Аня, Вика, Боря, Гоша: HashAggregate раскладывает по хэшу. Нужен порядок — ORDER BY.',
+    incorrect: 'Неверно. PostgreSQL часто группирует через хэш-таблицу, и порядок получается любым. На стенде было Аня, Вика, Боря, Гоша. Порядок даёт только ORDER BY.'
+  }
+});
+</script>
+</body>
+</html>

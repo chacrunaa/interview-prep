@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: ускорение JOIN</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+  <p class="kicker">Database · Производительность · Шпаргалка</p>
+  <h1>Ускорение JOIN — шпаргалка</h1>
+  <p><b>Суть:</b> сначала <code>EXPLAIN (ANALYZE, BUFFERS)</code>, потом рычаг под конкретную беду. Цепочка: <b>статистика → оценка строк → выбор алгоритма</b>.</p>
+
+  <h2>Алгоритмы</h2>
+  <table>
+    <tr><th></th><th>Хорош</th><th>Болит</th></tr>
+    <tr><td>Nested Loop</td><td>снаружи мало, внутри индекс</td><td>нет индекса; оценка снаружи занижена</td></tr>
+    <tr><td>Hash Join</td><td>много строк, <code>=</code></td><td>не влез в <code>work_mem</code></td></tr>
+    <tr><td>Merge Join</td><td>обе стороны отсортированы</td><td>большая сортировка</td></tr>
+  </table>
+
+  <h2>Что искать в плане → рычаг</h2>
+  <table>
+    <tr><th>Симптом</th><th>Рычаг</th></tr>
+    <tr><td><code>Seq Scan</code> по большой таблице ради малого числа строк</td><td>индекс на ключ соединения (FK сам не индексируется), составной / <code>INCLUDE</code></td></tr>
+    <tr><td>Оценка <code>rows</code> ≪ actual</td><td><code>ANALYZE</code>, <code>CREATE STATISTICS</code></td></tr>
+    <tr><td>Внутренний узел с огромным <code>loops</code></td><td>то же: статистика или индекс</td></tr>
+    <tr><td><code>Batches: N&gt;1</code>, <code>external merge Disk</code></td><td>меньше колонок/строк; <code>SET LOCAL work_mem</code></td></tr>
+    <tr><td>Индекс есть, но не используется</td><td>убрать функцию и приведение типа из <code>ON</code>; индекс по выражению</td></tr>
+    <tr><td><code>JOIN</code> + <code>DISTINCT</code> ради проверки наличия</td><td><code>EXISTS</code></td></tr>
+  </table>
+
+  <h2>Меньше входа</h2>
+  <ul>
+    <li>Фильтр как можно раньше, без <code>SELECT *</code>.</li>
+    <li>Агрегировать до соединения (и fan-out лечится).</li>
+    <li>Hash/Merge — только для равенства; диапазон в <code>ON</code> = Nested Loop.</li>
+  </ul>
+
+  <h2>Код</h2>
+  <pre><code>CREATE INDEX CONCURRENTLY ON order_items (order_id);
+ANALYZE imports;                       -- после массовой загрузки
+SET LOCAL work_mem = '256MB';          -- в транзакции тяжёлого запроса</code></pre>
+
+  <h2>Дальше рычагов</h2>
+  <ul>
+    <li>Материализованное представление / денормализация для отчётов.</li>
+    <li>Аналитика по миллиардам строк — колоночная БД.</li>
+    <li>N+1 в Go → один <code>JOIN</code> или <code>WHERE id = ANY($1)</code>.</li>
+  </ul>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>Начинать с «добавлю индексы» без плана.</li>
+    <li>«Подзапрос быстрее JOIN» — план часто одинаковый.</li>
+    <li>FK не создаёт индекс в PostgreSQL.</li>
+    <li>Хинтов в PostgreSQL нет.</li>
+    <li><code>EXPLAIN</code> без <code>ANALYZE</code> — только оценки.</li>
+    <li>Глобальный <code>work_mem</code> × операции × соединения = OOM.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «Смотрю <code>EXPLAIN ANALYZE</code>: алгоритм, расхождение оценки и факта, <code>Seq Scan</code>, уход на диск. Чаще всего — индекс на ключ соединения, FK его не создаёт. Потом уменьшаю вход: фильтры, колонки, агрегация до JOIN, <code>EXISTS</code>. Условие без функций и с одинаковыми типами. Врёт оценка — <code>ANALYZE</code>. Диск — <code>SET LOCAL work_mem</code>. Тяжёлые отчёты — материализованное представление.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_03_joins_set_operations.md</code>; <code>InterviewPro/docs/questions/database/topic_04_indexes_execution_plans.md</code>; <a href="https://www.postgresql.org/docs/current/using-explain.html">PostgreSQL — Using EXPLAIN</a>; <a href="https://www.postgresql.org/docs/current/planner-stats.html">PostgreSQL — Planner Statistics</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0014-join-performance.html">← К уроку</a>
+    <a href="../labs/0014-join-performance.html">Практика →</a>
+    <a href="0003-joins-in-business.html">Шпаргалка JOIN в бизнесе →</a>
+  </div>
+</div>
+</body>
+</html>

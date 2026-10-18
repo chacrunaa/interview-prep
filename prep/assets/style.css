@@ -206,6 +206,31 @@ th { color: var(--text-muted); font-weight: 600; font-size: 0.8rem; text-transfo
   a { color: inherit; text-decoration: none; }
 }
 
+
+/* Практика: шаг лабораторной и раскрываемый ответ. <div class="step">...<details class="answer"><summary>...</summary>...</details></div> */
+.step {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 1rem 1.2rem;
+  margin: 1.4rem 0;
+}
+.step .predict {
+  border-left: 3px solid var(--accent);
+  padding-left: 0.8rem;
+  margin: 0.8rem 0;
+}
+details.answer {
+  margin-top: 0.8rem;
+  border-top: 1px dashed var(--rule);
+  padding-top: 0.6rem;
+}
+details.answer summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 600;
+}
+
 @media (max-width: 480px) {
   body { font-size: 17px; }
   .page { padding: 2rem 1rem 3rem; }

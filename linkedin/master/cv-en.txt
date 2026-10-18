@@ -1,0 +1,103 @@
+Andrey Karlin
+Senior Golang Engineer | 7 years | Distributed Systems & High-Load Data Platforms | 30k+ messages/sec
+Berlin, Germany | [+49 PHONE] (WhatsApp) | [GMAIL] | linkedin.com/in/[SLUG] | Telegram: @ka_dev_3
+Remote from Germany | Open to relocation | Full-time or B2B contract
+
+
+PROFILE
+
+Senior Golang engineer with 7 years of commercial experience building high-load distributed
+systems in payments, industrial IoT and marketplace domains. Deep expertise in Go concurrency,
+event-driven architecture and splitting monoliths into services. Designed an ingestion pipeline
+sustaining 30k+ messages per second with no data loss over unreliable links. Focused on
+correctness, ownership, cloud infrastructure and AI-assisted delivery.
+
+
+SKILLS
+
+- Languages: Golang / Go (7 yrs), JavaScript (Node.js), SQL
+- Core: Microservices, Distributed Systems, Highload, Scalability, Domain-Driven Design,
+  Concurrency Patterns
+- Go Ecosystem: chi, pgx, goose, gqlgen, testcontainers, pprof
+- Data & Storage: PostgreSQL, ClickHouse, MongoDB, Redis, MySQL
+- Messaging: RabbitMQ, Kafka, Amazon SQS, event-driven architecture, idempotency keys
+- APIs & Protocols: gRPC, Protocol Buffers, REST, GraphQL
+- Infrastructure & Cloud: AWS (EKS, RDS, S3, SQS), Docker, Kubernetes (5 yrs), Terraform,
+  GitLab CI/CD
+- Observability: Prometheus, Grafana, OpenTelemetry
+- AI-assisted development: Claude Code, coding agents, project rules as agent instructions
+
+
+EMPLOYMENT HISTORY
+
+Jan 2026 - Present
+Senior Golang Developer, [COMPANY A]
+Berlin, Germany
+Internal payments platform of a European marketplace: payouts to sellers across 6 countries.
+Stack: Go (chi, pgx, goose), gRPC, PostgreSQL, RabbitMQ, Redis, AWS (EKS, RDS, S3, SQS),
+Terraform, Kubernetes, GitLab CI/CD, Prometheus, Grafana, Claude Code.
+
+- Eliminated duplicate execution of financial operations with idempotency keys at API and
+  storage level.
+- Led the settlement domain migration to a new data model; we switched production traffic
+  with no drift between environments.
+- Moved 40M+ production records with zero loss using a Go CLI tool with validation,
+  quarantine of invalid rows and safe re-runs.
+- Cut ad-account registry p95 from 1.2s to 300ms by removing N+1 queries and adding batching
+  and keyset pagination.
+- Replaced cross-module repository access with dependency inversion, preparing 3 modules for
+  extraction into services.
+- Run coding agents on tests and boilerplate, with project architecture rules encoded as
+  agent instructions.
+
+May 2023 - Dec 2025 (2 yrs 8 mos)
+Senior Golang Developer, [COMPANY B]
+Berlin, Germany
+Industrial IoT platform collecting telemetry from equipment at remote energy and
+manufacturing sites: 14 services, 2k+ connected devices.
+Stack: Go, gRPC, Protocol Buffers, GraphQL (gqlgen), ClickHouse, PostgreSQL, MongoDB,
+RabbitMQ, Redis, AWS, Kubernetes, Prometheus, Grafana, OpenTelemetry.
+
+- Designed the telemetry ingestion service sustaining 30k+ measurements per second, with
+  store-and-forward through link outages and batched ClickHouse writes, holding data
+  completeness at 100%.
+- Sped up analytical queries 10x, p95 from several seconds to 200ms, by redesigning the
+  ClickHouse schema: partitioning, materialized views, compression codecs.
+- Prevented cascading failures across 14 services with circuit breakers, backoff and rate
+  limiting; OpenTelemetry made cross-service latency visible end to end.
+- Cut GC pressure on the hot ingestion path with escape analysis, sync.Pool for batch buffers
+  and GOMEMLIMIT, profiled with pprof.
+- Owned the ingestion track end to end: requirements with field engineers, data schema and
+  contracts, task split across joining developers.
+
+Apr 2021 - Apr 2023 (2 yrs)
+Golang Developer, Carprice
+Remote
+AutoTech marketplace for used cars, with 100+ field inspectors working from a mobile app.
+Stack: Go, Node.js (Express, NestJS), PostgreSQL, Redis, Kafka, RabbitMQ, S3, Docker,
+Kubernetes, GitLab CI/CD, testcontainers.
+
+- Migrated the legacy Node.js backend to Go domain by domain: a new service ran beside the
+  old one, traffic switched per endpoint.
+- Raised test coverage of critical business logic from 0% to 95% and introduced code review
+  in a team that had neither.
+- Built an automated valuation service handling 10-15k valuations a day with precomputed and
+  cached comparables.
+- Moved photo uploads (~10k a day) to asynchronous processing with direct S3 upload, removing
+  blocking in the mobile app.
+
+Feb 2019 - Mar 2021 (2 yrs 2 mos)
+Go Developer, [COMPANY D]
+Berlin, Germany
+B2B SaaS: API integration layer and data synchronisation for mid-market e-commerce clients.
+Stack: Go, PHP, Node.js, Python, MySQL, Redis, Docker.
+
+- Rewrote the data synchronisation pipeline from legacy PHP and Node.js to Go, cutting lag
+  from 15 minutes to 30 seconds.
+- Cut reporting query response time 3x through composite indexing and query plan analysis.
+
+
+EDUCATION
+
+BSc, Information Systems and Technologies
+Bonch-Bruevich State University of Telecommunications

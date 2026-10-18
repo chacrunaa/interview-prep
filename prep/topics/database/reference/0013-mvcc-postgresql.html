@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: MVCC в PostgreSQL</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+  <p class="kicker">Database · PostgreSQL · Шпаргалка</p>
+  <h1>MVCC в PostgreSQL — шпаргалка</h1>
+  <p><b>Суть:</b> строка хранится в нескольких версиях. <code>UPDATE</code> = пометить старую <code>xmax</code> + вставить новую с <code>xmin</code>. Транзакция по своему снимку решает, какую версию видеть. Читатели не ждут писателей.</p>
+
+  <h2>Кирпичики</h2>
+  <table>
+    <tr><th>Что</th><th>Смысл</th></tr>
+    <tr><td>tuple</td><td>физическая версия строки, адрес — <code>ctid</code></td></tr>
+    <tr><td><code>xmin</code></td><td>транзакция, создавшая версию</td></tr>
+    <tr><td><code>xmax</code></td><td>транзакция, удалившая или заменившая версию (0 — никто)</td></tr>
+    <tr><td>snapshot</td><td>какие транзакции для меня уже закоммичены</td></tr>
+  </table>
+  <pre><code>SELECT xmin, xmax, ctid, * FROM acc;</code></pre>
+
+  <h2>Правило видимости</h2>
+  <ol>
+    <li><code>xmin</code> закоммичена для моего снимка (или это я).</li>
+    <li><code>xmax</code> пуст, откатилась или ещё не закоммичена для моего снимка.</li>
+  </ol>
+
+  <h2>Снимок и уровни</h2>
+  <table>
+    <tr><th>Уровень</th><th>Снимок</th></tr>
+    <tr><td>Read Committed</td><td>на каждый запрос</td></tr>
+    <tr><td>Repeatable Read</td><td>один на транзакцию; запись поверх нового коммита — <code>40001</code></td></tr>
+    <tr><td>Serializable</td><td>один на транзакцию + отслеживание write skew</td></tr>
+  </table>
+  <p>Читатель ↔ писатель: не ждут. Писатель ↔ писатель: ждут блокировку строки.</p>
+
+  <h2>VACUUM</h2>
+  <ul>
+    <li>Мёртвые версии копятся → bloat таблиц и индексов.</li>
+    <li>VACUUM убирает версии, не видимые <b>ни одному</b> снимку; место переиспользуется, файл не уменьшается.</li>
+    <li>Autovacuum не выключать. <code>VACUUM FULL</code> сжимает, но блокирует таблицу.</li>
+    <li>Долгая/забытая транзакция блокирует уборку во всей базе.</li>
+    <li>HOT-update: не меняются индексированные колонки + есть место в странице → индексы не трогаются.</li>
+    <li>Wraparound: 32-битные номера транзакций, VACUUM «замораживает» старые версии.</li>
+  </ul>
+
+  <h2>В Go</h2>
+  <ul>
+    <li><code>pgx.BeginFunc</code> или <code>defer tx.Rollback(ctx)</code> сразу после <code>Begin</code>.</li>
+    <li>Никаких HTTP-вызовов и ожиданий внутри транзакции.</li>
+    <li>Страховка в базе: <code>idle_in_transaction_session_timeout</code>.</li>
+  </ul>
+
+  <h2>PostgreSQL против InnoDB</h2>
+  <table>
+    <tr><th></th><th>PostgreSQL</th><th>InnoDB</th></tr>
+    <tr><td>Старые версии</td><td>в таблице</td><td>в undo-логе, строка правится на месте</td></tr>
+    <tr><td>Уборка</td><td>VACUUM</td><td>purge</td></tr>
+    <tr><td>Боль</td><td>bloat</td><td>рост undo</td></tr>
+  </table>
+
+  <div class="callout">
+    Формулировка для собеса: «<code>UPDATE</code> создаёт новую версию строки, у версий есть <code>xmin</code> и <code>xmax</code>, транзакция по своему снимку решает, что видеть. Читатели не ждут писателей, писатели ждут друг друга. RC — снимок на запрос, RR — на транзакцию. Мёртвые версии убирает autovacuum, но долгая транзакция ему мешает во всей базе. В InnoDB старые версии в undo-логе.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_06_isolation_levels_mvcc.md</code>; <a href="https://www.postgresql.org/docs/current/mvcc-intro.html">PostgreSQL — MVCC Introduction</a>; <a href="https://www.postgresql.org/docs/current/ddl-system-columns.html">PostgreSQL — System Columns</a>; <a href="https://www.postgresql.org/docs/current/routine-vacuuming.html">PostgreSQL — Routine Vacuuming</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0013-mvcc-postgresql.html">← К уроку</a>
+    <a href="0004-read-committed.html">Шпаргалка Read Committed →</a>
+  </div>
+</div>
+</body>
+</html>

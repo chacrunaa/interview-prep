@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shared и exclusive lock</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Транзакции · Блокировки</p>
+  <h1>Shared и exclusive lock: это <code>sync.RWMutex</code>, только для строк</h1>
+  <p class="lede">Одна победа этого урока: ты рисуешь по памяти таблицу совместимости 2×2 (кто кого пускает) и говоришь, почему в PostgreSQL обычный <code>SELECT</code> всё равно не ждёт ни одну из этих блокировок.</p>
+
+  <p class="sidenote">Связано с уроками <a href="0005-select-for-update-read-committed.html">«SELECT FOR UPDATE»</a> и <a href="0006-for-update-vs-update.html">«FOR UPDATE против UPDATE»</a>. Там был только один вид блокировки строки — для записи. Здесь появляется второй, и становится видно, что <code>FOR UPDATE</code> — это просто exclusive lock.</p>
+
+  <h2>Аналогия</h2>
+  <p>Ты пишешь на Go, так что аналогия уже знакома: <b><code>sync.RWMutex</code></b>.</p>
+  <pre><code>var mu sync.RWMutex
+
+mu.RLock()   // много горутин могут держать одновременно: все только читают
+mu.RUnlock()
+
+mu.Lock()    // только одна горутина, и пока она держит - ни RLock, ни Lock не пройдут
+mu.Unlock()</code></pre>
+  <p><code>RLock</code> — это и есть <b>shared lock</b>: «я читаю и хочу, чтобы никто не менял, пока я не закончу; читать вместе со мной — пожалуйста». <code>Lock</code> — <b>exclusive lock</b>: «я меняю, никто больше не держит этот замок».</p>
+  <p>Только в базе замок вешается не на структуру в памяти, а на <b>конкретную строку</b> (или на таблицу), и снимается не когда ты вызвал <code>Unlock</code>, а <b>в конце транзакции</b> — на <code>COMMIT</code> или <code>ROLLBACK</code>.</p>
+
+  <h2>Формально</h2>
+  <ul>
+    <li><b>Shared lock (S, разделяемая, совместная блокировка)</b> — другие транзакции могут взять на эту строку такую же S-блокировку, но не могут её изменить и не могут взять X-блокировку.</li>
+    <li><b>Exclusive lock (X, исключительная блокировка)</b> — никто другой не может взять на эту строку ни S, ни X, пока она держится.</li>
+  </ul>
+  <p>Вся тема укладывается в одну таблицу. Её стоит уметь нарисовать на доске:</p>
+  <table>
+    <tr><th>Уже держат →<br>Хочу взять ↓</th><th>S</th><th>X</th></tr>
+    <tr><td><b>S</b></td><td>✅ можно</td><td>⏳ жду</td></tr>
+    <tr><td><b>X</b></td><td>⏳ жду</td><td>⏳ жду</td></tr>
+  </table>
+  <p>Правило запоминается так: <b>совместимы только два чтения</b>. Всё, где есть запись, — ждёт.</p>
+  <p>И ещё одно слово из банка вопросов: InnoDB (и PostgreSQL тоже) держит блокировки <b>до конца транзакции</b> и снимает все разом. Это называют <b>двухфазной блокировкой (2PL)</b>: сначала только набираешь блокировки, потом на коммите отпускаешь всё сразу.</p>
+
+  <div id="quiz-1"></div>
+
+  <h2>Как это выглядит в SQL</h2>
+  <table>
+    <tr><th></th><th>PostgreSQL</th><th>MySQL InnoDB</th></tr>
+    <tr><td>Shared lock на строку</td><td><code>SELECT ... FOR SHARE</code></td><td><code>SELECT ... FOR SHARE</code> (8.0), раньше <code>LOCK IN SHARE MODE</code></td></tr>
+    <tr><td>Exclusive lock на строку</td><td><code>SELECT ... FOR UPDATE</code></td><td><code>SELECT ... FOR UPDATE</code></td></tr>
+    <tr><td>Берут X сами</td><td><code>UPDATE</code>, <code>DELETE</code></td><td><code>UPDATE</code>, <code>DELETE</code></td></tr>
+  </table>
+  <p>То есть ничего нового ты не учишь: <code>FOR UPDATE</code> из прошлых уроков — это и есть exclusive lock, а обычный <code>UPDATE</code> берёт такой же. Новое только одно — <code>FOR SHARE</code>.</p>
+  <p class="sidenote">Тонкость для PostgreSQL: там на самом деле четыре режима блокировки строки — <code>FOR KEY SHARE</code> &lt; <code>FOR SHARE</code> &lt; <code>FOR NO KEY UPDATE</code> &lt; <code>FOR UPDATE</code>. Это та же идея S/X, только раздробленная: <code>UPDATE</code>, не трогающий ключевые столбцы, берёт <code>FOR NO KEY UPDATE</code> (это было во врезке урока 0006). На собесе достаточно сказать, что они есть и что это уточнение S/X.</p>
+
+  <h2>Главное: обычный SELECT в эту таблицу не входит</h2>
+  <p>Вот где ломается большинство ответов. В учебниках (и в банке вопросов, в <code>dBTheory/transactions.md</code>) описан классический подход: <b>каждое чтение берёт S-блокировку</b>, поэтому писатель ждёт читателей, а читатели ждут писателя.</p>
+  <p>В PostgreSQL и в InnoDB (на уровнях до Repeatable Read включительно) так <b>не</b> работает. Там MVCC: обычный <code>SELECT</code> читает снимок данных и <b>никаких блокировок строк не берёт</b>. Поэтому:</p>
+  <pre><code>-- Транзакция A
+BEGIN;
+UPDATE accounts SET balance = 0 WHERE id = 1;  -- X-блокировка на строку 1
+
+-- Транзакция B, параллельно
+SELECT balance FROM accounts WHERE id = 1;            -- ✅ сразу, видит старое значение
+SELECT balance FROM accounts WHERE id = 1 FOR SHARE;  -- ⏳ ждёт: хочет S, а там X</code></pre>
+  <p>Это ровно то, что было в записи после урока 0006: <b>блокировки строк конфликтуют только с другими блокировками</b>. Обычное чтение — не блокировка, оно никого не ждёт и никому не мешает.</p>
+  <p>Исключение, которое любят спросить: в MySQL InnoDB на уровне <b>Serializable</b> обычный <code>SELECT</code> внутри транзакции автоматически превращается в <code>SELECT ... FOR SHARE</code>. Вот там читатели и писатели начинают ждать друг друга — так и надо понимать фразу из банка, что exclusive lock «может блокировать и чтение в зависимости от уровня изоляции».</p>
+
+  <div id="quiz-2"></div>
+
+  <h2>Когда нужен FOR SHARE</h2>
+  <p>Когда тебе надо, чтобы строка <b>не поменялась и не исчезла</b>, пока ты делаешь что-то <b>рядом</b> с ней, но саму её ты менять не собираешься. Классика — родитель и потомок:</p>
+  <pre><code>// Добавить товар в заказ, только если товар активен.
+err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+    var active bool
+    err := tx.QueryRow(ctx,
+        `SELECT active FROM products WHERE id = $1 FOR SHARE`, productID).Scan(&amp;active)
+    if err != nil {
+        return err
+    }
+    if !active {
+        return ErrProductInactive
+    }
+    // до конца транзакции никто не сможет выключить или удалить товар
+    _, err = tx.Exec(ctx,
+        `INSERT INTO order_items (order_id, product_id) VALUES ($1, $2)`, orderID, productID)
+    return err
+})</code></pre>
+  <p>Почему не <code>FOR UPDATE</code>: сто покупателей одновременно добавляют этот товар в корзины. С <code>FOR SHARE</code> они <b>не мешают друг другу</b> (S совместима с S). С <code>FOR UPDATE</code> они выстроились бы в очередь по одному. А админ, который в этот момент делает <code>UPDATE products SET active = false</code>, подождёт всех — ему нужна X.</p>
+  <p>Внешние ключи в PostgreSQL делают то же самое сами: при вставке потомка база берёт на родителя <code>FOR KEY SHARE</code>, чтобы его не удалили.</p>
+
+  <h2>Ловушка: S, а потом X — это deadlock</h2>
+  <p>Самый частый практический вопрос по теме. Две транзакции:</p>
+  <pre><code>-- A                                       -- B
+SELECT ... WHERE id = 1 FOR SHARE;  -- S   SELECT ... WHERE id = 1 FOR SHARE;  -- S, можно
+UPDATE ... WHERE id = 1;  -- хочу X,       UPDATE ... WHERE id = 1;  -- хочу X,
+                          -- жду S от B                              -- жду S от A
+                          -- 💥 deadlock, одну база откатит с 40P01</code></pre>
+  <p>Обе честно держат S (это разрешено), обе хотят повысить до X, и каждая ждёт, пока другая отпустит свою S. Вывод: <b>если собираешься менять строку — бери сразу <code>FOR UPDATE</code>, а не <code>FOR SHARE</code> «на время проверки»</b>. В Go то же самое: нельзя повысить <code>RLock</code> до <code>Lock</code>, не отпустив его.</p>
+
+  <div id="quiz-3"></div>
+
+  <h2>Врезка: по размеру — строка или таблица</h2>
+  <p>S и X описывают <b>режим</b>. Отдельно есть <b>гранулярность</b> — что блокируем:</p>
+  <ul>
+    <li><b>Строку</b> — то, о чём весь урок. Мелко, параллельно, но блокировок много.</li>
+    <li><b>Таблицу</b> — <code>LOCK TABLE</code>, а также <code>ALTER TABLE</code>, который берёт самую сильную табличную блокировку и останавливает даже чтения. Отсюда страх миграций на живой базе.</li>
+  </ul>
+  <p>В InnoDB есть ещё <b>intention locks</b> (IS, IX) — это табличная пометка «внутри кто-то держит S или X на строках». Нужна, чтобы <code>LOCK TABLE</code> не перебирал все строки, а сразу увидел, что таблица занята. Достаточно знать, что они есть и зачем.</p>
+
+  <h2>Частая ошибка на собесе</h2>
+  <p><b>«Shared lock — это блокировка на чтение, значит пока она есть, другие не могут читать».</b> Наоборот: shared как раз разрешает другим читать и брать такую же S. Запрещает только менять.</p>
+  <p><b>«Exclusive lock блокирует все чтения строки».</b> В PostgreSQL и InnoDB с MVCC — нет: обычный <code>SELECT</code> его не замечает. Ждут только <code>FOR SHARE</code>, <code>FOR UPDATE</code>, <code>UPDATE</code>, <code>DELETE</code>.</p>
+  <p><b>Путаться в формулировках «блокирует на запись / на чтение».</b> В банке написано «<code>LOCK IN SHARE MODE</code> блокирует строки на запись», а «<code>FOR UPDATE</code> — на чтение». Это про то, что они запрещают <b>другим</b>: первая не даёт другим писать, вторая — ещё и брать блокирующее чтение. Лучше на собесе вообще не говорить «на запись / на чтение», а говорить «S совместима с S, X ни с чем».</p>
+  <p><b>Брать <code>FOR SHARE</code>, а потом обновлять ту же строку.</b> Ведёт к deadlock при параллельных вызовах. Нужна запись — сразу X.</p>
+
+  <div class="callout">
+    Формулировка для собеса: «Shared lock — разделяемая блокировка: несколько транзакций могут держать её одновременно, но никто не может изменить строку. Exclusive — только одна транзакция, несовместима ни с S, ни с X. Совместимы только две S. Держатся до конца транзакции. В PostgreSQL это <code>FOR SHARE</code> и <code>FOR UPDATE</code>, а <code>UPDATE</code>/<code>DELETE</code> берут X сами. При этом из-за MVCC обычный <code>SELECT</code> никаких блокировок строк не берёт и не ждёт — конфликтуют только блокировки между собой. Это как <code>sync.RWMutex</code>: <code>RLock</code> и <code>Lock</code>.»
+  </div>
+
+  <div id="quiz-4"></div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/theory/backendinterview/db/relational/mysql/concurency.md</code> (определения shared/exclusive, <code>LOCK IN SHARE MODE</code>, <code>FOR UPDATE</code>, двухфазная блокировка, intention locks); <code>InterviewPro/docs/theory/backendinterview/db/dBTheory/transactions.md</code> (классическая реализация изоляции через разделяемые блокировки против MVCC); <a href="https://www.postgresql.org/docs/current/explicit-locking.html">PostgreSQL Docs — Explicit Locking</a> (режимы <code>FOR KEY SHARE</code> … <code>FOR UPDATE</code>, табличные блокировки, deadlock). В <code>docs/questions/database</code> отдельного вопроса про shared/exclusive нет.</p>
+
+  <div class="ask-teacher">Если что-то из этого осталось непонятным — просто спроси, разберём отдельно.</div>
+
+  <div class="nav-links">
+    <a href="../reference/0011-shared-exclusive-locks.html">Шпаргалка по теме →</a>
+    <a href="0010-optimistic-locking-version.html">← Optimistic locking</a>
+  </div>
+</div>
+<script src="../../../assets/quiz.js"></script>
+<script>
+new Quiz(document.getElementById('quiz-1'), {
+  prompt: 'Транзакция A держит shared lock на строку. Какие блокировки на ту же строку сможет сразу взять транзакция B?',
+  options: [
+    'Только shared: S совместима лишь с другой S',
+    'Только exclusive: он сильнее и вытеснит S',
+    'Любую: блокировка A действует лишь для неё'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — два чтения совместимы, всё, где есть запись, ждёт. Как RLock в RWMutex: много RLock можно, Lock придётся ждать.',
+    incorrect: 'Неверно. Совместимы только S и S. Exclusive будет ждать, пока A не отпустит S на коммите.'
+  }
+});
+new Quiz(document.getElementById('quiz-2'), {
+  prompt: 'PostgreSQL. A сделала UPDATE строки и не закоммитилась. B выполняет обычный SELECT этой строки без FOR. Что будет?',
+  options: [
+    'B сразу читает старую версию, ничего не ждёт',
+    'B ждёт коммита A: строка под exclusive lock',
+    'B получает ошибку, строка сейчас заблокирована'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — это MVCC. Обычный SELECT не берёт блокировок строк и читает снимок, поэтому X-блокировка A его не касается.',
+    incorrect: 'Неверно. В PostgreSQL обычный SELECT не участвует в блокировках строк: читает последнюю закоммиченную версию сразу. Ждал бы SELECT ... FOR SHARE.'
+  }
+});
+new Quiz(document.getElementById('quiz-3'), {
+  prompt: 'Две транзакции параллельно делают SELECT ... FOR SHARE одной строки, а затем UPDATE этой же строки. Что произойдёт?',
+  options: [
+    'Deadlock: каждая ждёт, пока другая отпустит S',
+    'Вторая подождёт первую и спокойно обновит',
+    'Обе обновят строку, S это разрешает обеим'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — обе держат S, обе хотят X, ни одна не отпустит S до конца транзакции. База откатит одну с 40P01. Нужна запись — сразу FOR UPDATE.',
+    incorrect: 'Неверно. Для UPDATE нужна X, а X несовместима с чужой S. Обе ждут друг друга — deadlock, одну база откатит с кодом 40P01.'
+  }
+});
+new Quiz(document.getElementById('quiz-4'), {
+  prompt: 'Много покупателей одновременно добавляют товар в заказ; товар нельзя выключить в процессе. Какую блокировку брать на товар?',
+  options: [
+    'FOR SHARE: покупатели не мешают друг другу',
+    'FOR UPDATE: так надёжнее и ничего не сломать',
+    'Никакую: обычный SELECT тоже защитит строку'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — S-блокировки совместимы, покупатели идут параллельно, а UPDATE админа подождёт, пока они закончат.',
+    incorrect: 'Неверно. FOR UPDATE выстроит покупателей в очередь по одному, а обычный SELECT ничего не блокирует. Нужна совместимая между покупателями S — FOR SHARE.'
+  }
+});
+</script>
+</body>
+</html>

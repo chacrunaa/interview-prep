@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: партиции и ребаланс Kafka</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Integration · Kafka · Шпаргалка</p>
+  <h1>Партиции и ребаланс — шпаргалка</h1>
+
+  <p><b>Суть:</b> топик — имя, физически есть только партиции. Партиция = упорядоченный append-only лог = единица порядка, параллелизма и репликации. Ребаланс — перераздача партиций внутри consumer group; его не отменяют, а делают редким и дешёвым.</p>
+
+  <h2>Партиция</h2>
+  <ul>
+    <li>Offset уникален <b>внутри партиции</b>. Адрес сообщения: (partition, offset).</li>
+    <li>Порядок — только внутри партиции. Ключ → <code>hash(key) % N</code> → одна партиция.</li>
+    <li>Один консьюмер группы на партицию. Консьюмеров больше партиций — лишние простаивают.</li>
+    <li>Лидер (чтение/запись) + реплики; ISR — те, кто не отстал. Лидер умер — новый из ISR.</li>
+    <li>Партиций можно добавить, убавить нельзя; после добавления ключи «переезжают» (N изменилось).</li>
+  </ul>
+
+  <h2>Причины ребаланса</h2>
+  <p>Консьюмер вошёл · умер (нет heartbeat дольше <code>session.timeout.ms</code>) · изменилась подписка. Вне банка: консьюмер не вернулся в <code>poll()</code> за <code>max.poll.interval.ms</code>.</p>
+
+  <h2>Как смягчить</h2>
+  <table>
+    <tr><th>Приём</th><th>Суть</th></tr>
+    <tr><td><code>CooperativeStickyAssignor</code></td><td>Двигаются только нужные партиции, остальные читаются без остановки (в банке)</td></tr>
+    <tr><td><code>group.instance.id</code> (вне банка)</td><td>Статичное членство: рестарт в пределах <code>session.timeout.ms</code> ребаланса не вызывает</td></tr>
+    <tr><td>Тюнинг таймаутов</td><td><code>session.timeout.ms</code>, <code>heartbeat.interval.ms</code> (≤ 1/3 session), <code>max.poll.interval.ms</code>, <code>max.poll.records</code></td></tr>
+    <tr><td><code>onPartitionsRevoked</code></td><td>Дообработать и закоммитить до отзыва: нет дублей (в банке упомянут <code>ConsumerRebalanceListener</code>)</td></tr>
+    <tr><td>Дисциплина деплоя</td><td>Не гонять скейлинг вверх-вниз, не выходить за число партиций</td></tr>
+    <tr><td>KIP-848 (вне банка)</td><td>Новый протокол: раздача на стороне координатора, без «стоп всей группе»</td></tr>
+  </table>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>«Топик на одном брокере» — нет, партиции по разным.</li>
+    <li>«Ребаланса можно избежать» — нет, только минимизировать.</li>
+    <li>Heartbeat ≠ poll: зависшая обработка при живом heartbeat всё равно выкинет консьюмера.</li>
+    <li>Коммит после отзыва партиции бесполезен — коммитить надо до.</li>
+    <li>В Go кооперативный ребаланс зависит от библиотеки (проверить версию).</li>
+  </ul>
+
+  <p class="sidenote">Источник: <code>integration/topic_03_apache_kafka.md</code>. Полный урок: <code>../lessons/0002-kafka-partitions-rebalance.html</code>.</p>
+</div>
+</body>
+</html>

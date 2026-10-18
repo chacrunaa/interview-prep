@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: session и transaction pooling</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+  <p class="kicker">Database · PostgreSQL · Шпаргалка</p>
+  <h1>Session и transaction pooling — шпаргалка</h1>
+  <p><b>Суть:</b> режим пула — это на сколько PgBouncer отдаёт клиенту настоящее соединение. В transaction mode — до <code>COMMIT</code>, поэтому <b>состояние сессии живёт не дольше транзакции</b>: иначе пропадает у тебя или утекает к чужому клиенту.</p>
+
+  <h2>Режимы</h2>
+  <table>
+    <tr><th>Режим</th><th>Закрепление</th><th>Ограничения</th><th>Экономия</th></tr>
+    <tr><td>Session</td><td>до отключения клиента</td><td>нет</td><td>слабая, с <code>pgxpool</code> почти нулевая</td></tr>
+    <tr><td>Transaction</td><td>до <code>COMMIT</code>/<code>ROLLBACK</code></td><td>нет сессионного состояния</td><td>сильная, стандарт для Go</td></tr>
+    <tr><td>Statement</td><td>на один запрос</td><td>нет транзакций из нескольких запросов</td><td>максимальная, редко</td></tr>
+  </table>
+
+  <h2>Что ломается в transaction mode</h2>
+  <table>
+    <tr><th>Что</th><th>Замена</th></tr>
+    <tr><td><code>SET ...</code></td><td><code>SET LOCAL</code> / <code>set_config(..., true)</code> в транзакции</td></tr>
+    <tr><td><code>pg_advisory_lock</code></td><td><code>pg_advisory_xact_lock</code></td></tr>
+    <tr><td><code>LISTEN</code></td><td>прямое соединение к PostgreSQL</td></tr>
+    <tr><td>Временные таблицы между транзакциями</td><td><code>ON COMMIT DROP</code> в одной транзакции</td></tr>
+    <tr><td><code>PREPARE</code> в SQL, курсоры <code>WITH HOLD</code></td><td>не использовать</td></tr>
+    <tr><td>Кэш prepared statements в pgx</td><td>PgBouncer 1.21+ с <code>max_prepared_statements</code> или <code>QueryExecModeExec</code></td></tr>
+  </table>
+  <p>Всё внутри одной транзакции работает как обычно.</p>
+
+  <h2>В Go</h2>
+  <pre><code>// плохо: разные соединения, SET утечёт чужим (даже без PgBouncer)
+pool.Exec(ctx, `SET search_path = t42`); pool.Query(ctx, `SELECT ...`)
+
+// хорошо
+pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+    tx.Exec(ctx, `SELECT set_config('search_path', $1, true)`, schema)
+    ...
+})
+
+// pgx через старый PgBouncer
+cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec</code></pre>
+
+  <h2>В проде</h2>
+  <ul>
+    <li>Сервис → PgBouncer (transaction).</li>
+    <li>Миграции, <code>LISTEN</code>, сессионные advisory-блокировки → напрямую в PostgreSQL, второй DSN.</li>
+    <li><code>pgxpool</code> (внутри процесса) и PgBouncer (между процессами и базой) — разные пулы, стоят друг за другом.</li>
+  </ul>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>«В transaction mode нельзя транзакции» — наоборот, они целиком на одном соединении.</li>
+    <li>«Без PgBouncer <code>SET</code> отдельным запросом безопасен» — нет, <code>pgxpool</code> тоже раздаёт соединения.</li>
+    <li>Ошибки <code>prepared statement "stmtcache_..." does not exist</code> — кэш pgx и старый PgBouncer.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «Session — соединение за клиентом до отключения, работает всё, экономии мало. Transaction — соединение на одну транзакцию, экономия большая, но сессионное состояние теряется или утекает: <code>SET</code>, advisory lock, <code>LISTEN</code>, temp-таблицы, prepared statements. Держу состояние внутри транзакции (<code>SET LOCAL</code>, <code>xact</code>-блокировки), миграции и <code>LISTEN</code> — напрямую в базу.»
+  </div>
+
+  <p class="source-rec">Источники: <a href="https://www.pgbouncer.org/features.html">PgBouncer — Features</a>; <a href="https://www.pgbouncer.org/config.html">PgBouncer — Configuration</a>; <a href="https://pkg.go.dev/github.com/jackc/pgx/v5#QueryExecMode">pgx — QueryExecMode</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0012-session-vs-transaction-pooling.html">← К уроку</a>
+    <a href="0011-shared-exclusive-locks.html">Шпаргалка shared/exclusive lock →</a>
+  </div>
+</div>
+</body>
+</html>

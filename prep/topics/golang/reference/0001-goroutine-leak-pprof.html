@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: утечка горутин</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Golang · Конкурентность · Шпаргалка</p>
+  <h1>Утечка горутин — шпаргалка</h1>
+
+  <p><b>Суть:</b> горутина заблокирована навсегда (канал без читателя или писателя, <code>range</code> по незакрытому каналу, вызов без таймаута), GC её не убирает. Симптом: число горутин и память растут и не падают. Находят через pprof goroutine-профиль, предотвращают через <code>context</code> и правила работы с каналами.</p>
+
+  <h2>Причины</h2>
+  <ul>
+    <li>запись в канал, из которого никто не читает;</li>
+    <li>чтение из канала, в который никто не пишет;</li>
+    <li><code>for range ch</code> без <code>close(ch)</code>;</li>
+    <li>сетевой вызов без таймаута и <code>context</code>.</li>
+  </ul>
+
+  <h2>Как найти</h2>
+  <table>
+    <tr><th>Шаг</th><th>Что</th></tr>
+    <tr><td>Заметить</td><td><code>runtime.NumGoroutine()</code> или метрика <code>go_goroutines</code> растёт</td></tr>
+    <tr><td>Включить</td><td><code>import _ "net/http/pprof"</code> + <code>http.ListenAndServe</code>, не наружу</td></tr>
+    <tr><td>Сгруппировано</td><td><code>/debug/pprof/goroutine?debug=1</code>: стеки со счётчиком</td></tr>
+    <tr><td>Подробно</td><td><code>?debug=2</code>: каждая горутина, состояние, время ожидания</td></tr>
+    <tr><td>Сравнить</td><td><code>go tool pprof -base a.pb.gz b.pb.gz</code>: что выросло</td></tr>
+  </table>
+  <p>Тысячи горутин на одной строке в ожидании — это утечка.</p>
+
+  <h2>Как предотвратить</h2>
+  <ul>
+    <li><code>select</code> с <code>ctx.Done()</code> в каждой точке ожидания, и на отправке тоже;</li>
+    <li>единственный результат: канал с буфером 1;</li>
+    <li>канал закрывает только отправитель; несколько отправителей: <code>done</code> или <code>context</code>;</li>
+    <li>таймаут на каждый внешний вызов;</li>
+    <li><code>defer cancel()</code> после <code>WithCancel/WithTimeout</code>;</li>
+    <li>вне банка: <code>errgroup</code> / <code>WaitGroup</code>, тесты с <code>goleak.VerifyNone(t)</code>.</li>
+  </ul>
+
+  <pre><code>select {
+case ch &lt;- v:
+case &lt;-ctx.Done():
+}</code></pre>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>«GC соберёт» — нет, горутина жива.</li>
+    <li><code>ctx.Done()</code> проверяют только в начале, а блокируются позже.</li>
+    <li>Путают с утечкой памяти от срезов (topic_08).</li>
+    <li>pprof на проде открыт наружу.</li>
+  </ul>
+
+  <p class="sidenote">Источник: <code>golang/topic_07_concurrency.md</code>, <code>golang/topic_09_dev_tools.md</code>. Урок: <code>../lessons/0001-goroutine-leak-pprof.html</code>.</p>
+</div>
+</body>
+</html>

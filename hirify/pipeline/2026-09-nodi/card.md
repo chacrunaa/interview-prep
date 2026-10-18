@@ -3,20 +3,57 @@
 | | |
 |---|---|
 | Компания | Nodi |
-| Роль | Senior Full Stack (Go, GraphQL, HTMX) |
-| Источник | Hirify |
+| Роль | Senior Full Stack Engineer (Go + HTMX) |
+| Источник | Hirify, `1154961`, отклик залогирован вручную (tracker:373017) |
+| Гипотеза | ? - не записывалась |
 | Подготовлено | 2026-09-29 |
-| Отправлено | ? |
-| Стадия | ? |
-| Дальше | ? |
+| Отправлено | 2026-09-29 |
+| Стадия | отклик |
+| Дальше | **вероятный тупик:** вакансия только для Латинской Америки, см. «Блокер» ниже |
 
 ## Файлы
 
 - [cv-en.txt](cv-en.txt)
 
+## Блокер
+
+Текст вакансии подтянут прогоном `scan` 2026-09-30 - через полтора дня после отклика. В нём обнаружилось то, чего не было в рекомендациях Hirify, по которым собиралось резюме:
+
+- **удалёнка только внутри Колумбии, Коста-Рики, Перу или Бразилии** (`macroregion: latam`, города Богота, Медельин, Лима, Сан-Паулу);
+- 6+ лет опыта - тот же пробел, что фиксировался при подготовке;
+- Azure «strongly preferred», а в резюме закрывалось абстрактным managed-облаком (b11);
+- Templ, Alpine.js, Tailwind рядом с HTMX - в рыбе (b9) только html/template + HTMX.
+
+Локация - жёсткое требование, снять его рыбой нельзя. Если ответа нет - переводи в `тишина`.
+
 ## Вакансия
 
-_Исходный текст не сохранился (до переезда `for-scan-vacancy.txt` перезаписывался)._
+Источник: https://hirify.me/jobs/1154961-senior-fullstack-go-htmx
+Локация: удалённо внутри Колумбии, Коста-Рики, Перу или Бразилии. Вилка: USD 3400-5100 в месяц. Язык: en, английский B2.
+
+Company: Nodi develops software solutions involving cloud technologies, modern engineering practices, and AI-enabled applications.
+
+What you will do:
+- Design, build, test, and maintain scalable production applications and backend services in Go.
+- Develop REST and GraphQL APIs, including schemas, queries, mutations, and resolvers.
+- Design MongoDB data models and queries with attention to performance, scalability, and maintainability.
+- Build server-rendered interfaces with HTMX and Templ, using Tailwind CSS and Alpine.js for responsive and accessible experiences.
+- Apply testing, code reviews, debugging, CI/CD, Docker, and cloud deployment practices across the software lifecycle.
+- Integrate AI capabilities into enterprise applications and apply AI-assisted development practices for coding, testing, documentation, and troubleshooting.
+
+Requirements:
+- 6+ years of software development experience with strong hands-on expertise in Go.
+- Experience designing REST and GraphQL APIs, MongoDB schemas and queries, and server-driven UIs with HTMX.
+- Experience with Templ, Alpine.js, Tailwind CSS, automated testing, Docker, CI/CD, code reviews, and debugging.
+- Hands-on experience deploying and supporting cloud applications with Azure, AWS, or GCP; Azure experience is strongly preferred.
+- Knowledge of AI-assisted development, large language models, prompt engineering, retrieval-augmented generation, AI governance, and responsible AI.
+- Strong problem-solving, communication, and collaboration skills in Agile, cross-functional product teams.
+
+Nice to have:
+- Experience with GitHub Copilot, Claude, ChatGPT, or comparable AI-enabled engineering tools.
+- Experience with agentic AI patterns, distributed systems, and event-driven architectures.
+- Experience optimizing Go applications for latency, throughput, scalability, and resilience.
+- Familiarity with production DevOps and observability practices.
 
 ## Разбор
 
@@ -86,3 +123,5 @@ _Исходный текст не сохранился (до переезда `f
 ## История
 
 - 2026-09-29 - подготовлено
+- 2026-09-29 - отклик залогирован в трекере Hirify (tracker:373017, стадия Applied)
+- 2026-09-30 - прогон `scan`: стадия проставлена по `applications.list`, подтянут исходный текст вакансии, найден блокер по локации (только LATAM)

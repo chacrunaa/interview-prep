@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: гарантии доставки</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Integration · Брокеры · Шпаргалка</p>
+  <h1>Гарантии доставки — шпаргалка</h1>
+
+  <p><b>Суть:</b> exactly-once по сети невозможен. Реально: <b>at-least-once + идемпотентный консьюмер</b>.</p>
+
+  <table>
+    <tr><th>Вид</th><th>Потери</th><th>Дубли</th><th>Получается так</th></tr>
+    <tr><td>At-most-once</td><td>да</td><td>нет</td><td>подтвердил → обработал; RabbitMQ <code>auto_ack=true</code>; Kafka автокоммит</td></tr>
+    <tr><td>At-least-once</td><td>нет</td><td>да</td><td>обработал → подтвердил; ручной ACK / commit; ретраи продюсера</td></tr>
+    <tr><td>Exactly-once</td><td>нет</td><td>нет</td><td>at-least-once + идемпотентность (или транзакции Kafka внутри Kafka)</td></tr>
+  </table>
+
+  <h2>Продюсер</h2>
+  <ul>
+    <li><b>RabbitMQ:</b> Publisher Confirms (ack после сохранения). Транзакции AMQP — устарели, в 100–250 раз медленнее.</li>
+    <li><b>Kafka:</b> <code>acks</code> = 0 / 1 / all; <code>retries</code> без идемпотентности дают дубли; <code>enable.idempotence=true</code> (producer id + sequence number по партиции) убирает дубли ретраев.</li>
+    <li>Вне банка: <code>min.insync.replicas</code> для осмысленного <code>acks=all</code>.</li>
+  </ul>
+
+  <h2>Консьюмер</h2>
+  <ul>
+    <li>Порядок «обработал → подтвердил» = at-least-once. Обратный порядок = at-most-once.</li>
+    <li>Идемпотентность: таблица <code>processed_messages(message_id PK)</code>, вставка и бизнес-логика в одной транзакции. Использовать <code>ON CONFLICT DO NOTHING</code> + <code>RowsAffected</code>, а не «любая ошибка = дубль».</li>
+    <li>Битое сообщение: лимит повторов + DLX, а не вечный <code>requeue</code>.</li>
+  </ul>
+
+  <h2>Exactly-once в Kafka</h2>
+  <p>Идемпотентный продюсер + транзакции (<code>transactional.id</code>, <code>begin/commit/abortTransaction</code>) + консьюмер <code>read_committed</code>. Работает <b>внутри Kafka</b> (consume-transform-produce); внешнюю БД/HTTP не охватывает.</p>
+
+  <h2>Из БД в брокер</h2>
+  <p><b>Transactional Outbox:</b> событие в таблицу <code>outbox</code> в одной транзакции с данными; relay (polling <code>FOR UPDATE SKIP LOCKED</code> или CDC/Debezium) отправляет в Kafka. Даёт at-least-once, поэтому получателю нужен Inbox.</p>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>«Kafka даёт exactly-once» без «внутри Kafka, в транзакциях».</li>
+    <li>Автокоммит ≠ надёжно: offset уходит до конца обработки.</li>
+    <li>Идемпотентный продюсер не защищает от повторной отправки из самого сервиса.</li>
+    <li>Отметка «обработано» и бизнес-эффект в разных транзакциях = дубль или потеря.</li>
+  </ul>
+
+  <p class="sidenote">Источники: <code>integration/topic_03_apache_kafka.md</code>, <code>integration/topic_04_rabbitmq_amqp.md</code>, <code>architecture/topic_03_distributed_transactions.md</code>. Полный урок: <code>../lessons/0003-delivery-guarantees.html</code>.</p>
+</div>
+</body>
+</html>

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: деплой микросервисов</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Architecture · Микросервисы · Шпаргалка</p>
+  <h1>Деплой микросервисов — шпаргалка</h1>
+
+  <p><b>Суть:</b> при выкате одновременно живут две версии (своего и соседних сервисов) на одной БД. Всё должно быть обратно совместимо.</p>
+
+  <h2>По слоям</h2>
+  <table>
+    <tr><th>Слой</th><th>Правило</th></tr>
+    <tr><td>БД</td><td><b>Expand-Contract:</b> добавить колонку (NULLABLE) → dual write → backfill батчами → читать из новой → удалить старую отдельной миграцией. Общая БД = распределённый монолит; нужен Database-per-Service.</td></tr>
+    <tr><td>API (вне банка)</td><td>Поля добавлять, не удалять; ломающее — в новую версию контракта.</td></tr>
+    <tr><td>События (вне банка)</td><td>В топике старые и новые сообщения вперемешку: новый консьюмер читает старые, старый не падает на новых полях.</td></tr>
+    <tr><td>Порядок выката</td><td>Если нужен жёсткий порядок A→B, это признак связанности.</td></tr>
+  </table>
+
+  <h2>Стратегии выката</h2>
+  <ul>
+    <li><b>Recreate:</b> удалить все старые, создать новые → простой.</li>
+    <li><b>RollingUpdate</b> (по умолчанию): постепенно; <code>maxSurge</code>, <code>maxUnavailable</code>.</li>
+    <li><b>Canary:</b> новая версия на малой доле, решение по метрикам.</li>
+    <li><b>Blue-green</b> (вне банка): вторая полная среда, переключение трафика целиком.</li>
+    <li><b>Feature flag:</b> выкатить выключенным, включать отдельно.</li>
+    <li><b>Откат:</b> Deployment rollback, <code>helm rollback</code>; работает, только если схема БД и контракты совместимы.</li>
+  </ul>
+
+  <h2>Процесс пода</h2>
+  <ul>
+    <li>readiness — «можно слать трафик», liveness — «перезапусти меня». <code>CrashLoopBackOff</code>: <code>describe</code>, <code>logs</code>, пробы, конфиг.</li>
+    <li>Graceful shutdown (вне банка): SIGTERM → readiness 503 → пауза → <code>http.Server.Shutdown</code> в пределах <code>terminationGracePeriodSeconds</code>.</li>
+    <li>Консьюмеры Kafka: каждый рестарт = ребаланс; коммит offset до отзыва партиций.</li>
+  </ul>
+
+  <h2>Организация</h2>
+  <ul>
+    <li>Много пайплайнов → шаблоны и Helm.</li>
+    <li>Нужны метрики и трейсинг, иначе canary и откат слепые.</li>
+    <li>Error Budget = 100% − SLO; исчерпан → Feature Freeze. Ограждения: canary + автооткат.</li>
+    <li>Strangler Fig: API Gateway → вынести домен с собственной БД → CDC/события → feature flag/canary 5–10%.</li>
+  </ul>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>Назвать только инструменты, а не проблему совместимости версий.</li>
+    <li>«Просто откатим» без совместимой схемы БД.</li>
+    <li>Rename/drop колонки одной миграцией.</li>
+    <li>Путать canary и rolling.</li>
+    <li>Не знать про graceful shutdown и пробы.</li>
+  </ul>
+
+  <p class="sidenote">Источники: <code>architecture/topic_01_monolith_microservices.md</code>, <code>database/topic_10_migrations_liquibase.md</code>, <code>devops/topic_03_kubernetes.md</code>, <code>devops/topic_07_sre_metrics.md</code>. Урок: <code>../lessons/0001-microservices-deploy.html</code>.</p>
+</div>
+</body>
+</html>

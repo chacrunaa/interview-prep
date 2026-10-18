@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: sync.Once и sync.Pool</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Golang · Конкурентность · Шпаргалка</p>
+  <h1>sync.Once и sync.Pool — шпаргалка</h1>
+
+  <p><b>Суть:</b> Once отвечает «сделать ровно один раз» (корректность), Pool отвечает «не создавать заново временные объекты» (производительность, без гарантий).</p>
+
+  <table>
+    <tr><th></th><th>sync.Once</th><th>sync.Pool</th></tr>
+    <tr><td>Гарантия</td><td>ровно один запуск, остальные ждут</td><td>нет, GC чистит в любой момент</td></tr>
+    <tr><td>API</td><td><code>once.Do(f)</code></td><td><code>Get</code> / <code>Put</code>, поле <code>New</code></td></tr>
+    <tr><td>Кейсы</td><td>ленивый клиент БД, конфиг, регулярка; <code>close(ch)</code> один раз</td><td><code>bytes.Buffer</code> в HTTP-обработчике, буферы декодирования, fasthttp</td></tr>
+    <tr><td>Не путать</td><td>с кэшем и с мьютексом на каждый вызов</td><td>с кэшем и с пулом соединений</td></tr>
+  </table>
+
+  <h2>Правила Pool</h2>
+  <ul>
+    <li>Класть только пустые, легко пересоздаваемые объекты.</li>
+    <li><code>Reset</code> после <code>Get</code>.</li>
+    <li>Не трогать объект после <code>Put</code>.</li>
+    <li>Мерить: <code>go test -bench . -benchmem</code>.</li>
+  </ul>
+
+  <h2>Нюансы Once (вне банка)</h2>
+  <ul>
+    <li>Паника в <code>f</code> считается выполненным вызовом, повтора не будет.</li>
+    <li>Долгая <code>f</code> блокирует всех остальных.</li>
+    <li>Go 1.21+: <code>sync.OnceFunc</code>, <code>OnceValue</code>, <code>OnceValues</code>.</li>
+  </ul>
+
+  <pre><code>once.Do(func() { db = open() })
+
+buf := pool.Get().(*bytes.Buffer)
+buf.Reset()
+defer pool.Put(buf)</code></pre>
+
+  <p class="sidenote">Источник: <code>golang/topic_07_concurrency.md</code>, <code>golang/topic_08_memory_runtime.md</code>, <code>golang/topic_10_frameworks.md</code>. Урок: <code>../lessons/0002-sync-once-pool.html</code>.</p>
+</div>
+</body>
+</html>

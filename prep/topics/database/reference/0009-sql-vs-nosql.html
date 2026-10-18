@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: SQL и NoSQL</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · NoSQL · Шпаргалка</p>
+  <h1>SQL и NoSQL — шпаргалка</h1>
+
+  <p><b>Суть:</b> NoSQL — не одна технология, а четыре модели данных без реляционной. SQL проектируют «от данных» (нормализация, JOIN, ACID), NoSQL «от запросов» (денормализация, гибкая схема, горизонтальное масштабирование). Дефолт: PostgreSQL, NoSQL — по конкретной причине.</p>
+
+  <h2>Четыре вида NoSQL</h2>
+  <table>
+    <tr><th>Тип</th><th>Пример</th><th>Когда</th></tr>
+    <tr><td>Key-Value</td><td>Redis</td><td>Кэш, сессии, счётчики, TTL</td></tr>
+    <tr><td>Документная</td><td>MongoDB</td><td>Объект с вложенностью, читается целиком</td></tr>
+    <tr><td>Wide-column</td><td>Cassandra, HBase</td><td>Огромная распределённая запись, чтение по ключу</td></tr>
+    <tr><td>Графовая</td><td>Neo4j</td><td>Связи и обход (друзья, рекомендации)</td></tr>
+  </table>
+  <p>«Колоночные» бывают двух семейств: wide-column (Cassandra) и аналитические (ClickHouse), см. урок 0007.</p>
+
+  <h2>SQL против NoSQL</h2>
+  <table>
+    <tr><th></th><th>SQL</th><th>NoSQL</th></tr>
+    <tr><td>Схема</td><td>Фиксированная</td><td>Гибкая (живёт в коде)</td></tr>
+    <tr><td>Связи</td><td>FK, JOIN</td><td>Вложение, денормализация</td></tr>
+    <tr><td>Запросы</td><td>Любые, SQL</td><td>Под заранее известные паттерны</td></tr>
+    <tr><td>Транзакции</td><td>ACID</td><td>Зависит от базы (Mongo 4.0+, Redis MULTI/EXEC)</td></tr>
+    <tr><td>Консистентность</td><td>Сильная</td><td>Часто eventual или настраиваемая</td></tr>
+    <tr><td>Масштабирование</td><td>Вертикально, шардинг сложнее</td><td>Горизонтально «из коробки»</td></tr>
+  </table>
+
+  <h2>CAP</h2>
+  <p>C — все видят одно и то же, A — каждый запрос получает ответ, P — переживает разрыв сети. По банку «два из трёх»; точнее: разрыв неизбежен, выбор C или A <b>в момент разрыва</b> (вне банка).</p>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>«NoSQL быстрее и современнее» — нет, другие компромиссы.</li>
+    <li>«В NoSQL нет транзакций» — есть, но зависят от базы.</li>
+    <li>«SQL не масштабируется» — масштабируется, но сложнее.</li>
+    <li>«Схемы нет» — она переехала в код.</li>
+    <li>Не уточнить тип NoSQL.</li>
+  </ul>
+
+  <p class="sidenote">Источник: <code>database/topic_09_nosql_redis_mongodb.md</code>, <code>database/topic_05_transactions_acid.md</code>. Урок: <code>../lessons/0009-sql-vs-nosql.html</code>.</p>
+</div>
+</body>
+</html>

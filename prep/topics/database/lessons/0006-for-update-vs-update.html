@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FOR UPDATE против UPDATE</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Транзакции · Блокировки</p>
+  <h1>FOR UPDATE против UPDATE: обычный UPDATE тоже блокирует</h1>
+  <p class="lede">Одна победа этого урока: ты перестаёшь думать, что <code>FOR UPDATE</code> — это «включить блокировку», и начинаешь выбирать между ним и обычным <code>UPDATE</code> по одному признаку: <b>где принимается решение — в SQL или в коде на Go</b>.</p>
+
+  <p class="sidenote">Третий урок цепочки: <a href="0004-read-committed.html">«Read Committed»</a> → <a href="0005-select-for-update-read-committed.html">«SELECT FOR UPDATE на Read Committed»</a> → этот. Примеры про PostgreSQL. Если прошлый урок оставил ощущение «значит, без <code>FOR UPDATE</code> строка не защищена» — этот урок как раз про то, почему это не так.</p>
+
+  <h2>Аналогия</h2>
+  <p>Та же общая доска, что и в прошлом уроке. Обычный <code>UPDATE</code> — это <b>подойти и сразу зачеркнуть запись, написав новую</b>. Табличку «занято» при этом тоже вешают — но вешают её ровно в момент, когда ты уже поднял маркер, и никто больше не успевает влезть. Табличка висит до конца твоей транзакции.</p>
+  <p><code>SELECT ... FOR UPDATE</code> — это <b>повесить табличку «занято» и отойти подумать</b>, ничего ещё не исправляя. Доска занята, а ты в это время считаешь на бумажке, звонишь коллеге, смотришь в другую запись — и только потом пишешь.</p>
+  <p>То есть разница не в том, есть блокировка или нет. Блокировка есть в обоих случаях. Разница в том, <b>успеваешь ли ты что-то сделать между захватом и записью</b>.</p>
+
+  <h2>Формально</h2>
+  <p>Главная фраза, которую стоит помнить дословно (она же в банке вопросов): <b><code>SELECT ... FOR UPDATE</code> блокирует считываемые строки — точно такую же блокировку ставит обычный <code>UPDATE</code>, когда считывает данные для обновления.</b></p>
+  <p>Что это значит практически: как только <code>UPDATE</code> нашёл строку, он берёт на неё блокировку уровня строки и держит её до <code>COMMIT</code> или <code>ROLLBACK</code>. Второй <code>UPDATE</code> той же строки из другой транзакции встанет в очередь и будет ждать. Отдельный <code>UPDATE</code> — <b>сам по себе атомарная операция</b>, ему не нужна «добавка» в виде <code>FOR UPDATE</code>, чтобы быть безопасным.</p>
+
+  <h2>Что у них одинаково</h2>
+  <table>
+    <tr><th>Поведение</th><th>SELECT ... FOR UPDATE</th><th>Обычный UPDATE</th></tr>
+    <tr><td>Берёт блокировку строки</td><td>да</td><td>да</td></tr>
+    <tr><td>Держит её до конца транзакции</td><td>да</td><td>да</td></tr>
+    <tr><td>Ждёт, если строку занял другой</td><td>да</td><td>да</td></tr>
+    <tr><td>На Read Committed после ожидания перечитывает свежую версию и заново проверяет <code>WHERE</code></td><td>да</td><td>да</td></tr>
+    <tr><td>На Repeatable Read в той же ситуации даёт ошибку <code>40001</code></td><td>да</td><td>да</td></tr>
+    <tr><td>Мешает обычным <code>SELECT</code> без блокировки</td><td>нет</td><td>нет</td></tr>
+  </table>
+  <p>Четвёртая строка — то самое правило из прошлого урока, и у <code>UPDATE</code> оно работает так же. Только проявляется иначе: если после ожидания строка <b>перестала подходить</b> под <code>WHERE</code>, <code>FOR UPDATE</code> просто не вернёт её в результате, а <code>UPDATE</code> её <b>не обновит</b> — и ты увидишь это как «0 затронутых строк».</p>
+
+  <h2>Что у них по-настоящему различается</h2>
+  <table>
+    <tr><th></th><th>SELECT ... FOR UPDATE</th><th>Обычный UPDATE</th></tr>
+    <tr><td>Где решение</td><td>в коде на Go, между двумя запросами</td><td>внутри SQL, в <code>WHERE</code> и <code>SET</code></td></tr>
+    <tr><td>Что видит код</td><td>значения строки до изменения</td><td>только число затронутых строк (или <code>RETURNING</code>)</td></tr>
+    <tr><td>Сколько запросов</td><td>минимум два, между ними живёт блокировка</td><td>один</td></tr>
+    <tr><td>Порядок блокировки нескольких строк</td><td>твой, через <code>ORDER BY id</code></td><td>на усмотрение планировщика</td></tr>
+    <tr><td>Сила блокировки</td><td><code>FOR UPDATE</code> — максимальная для строки</td><td>чуть слабее, если ключевые столбцы не меняются (см. врезку)</td></tr>
+    <tr><td>Цена</td><td>лишний round-trip и более долгая блокировка</td><td>дешевле всего</td></tr>
+  </table>
+
+  <div id="quiz-1"></div>
+
+  <h2>Опасен не UPDATE, а чтение перед ним</h2>
+  <p>Вот где рождается путаница. Опасность не в <code>UPDATE</code>, а в том, что новое значение <b>принесли из приложения</b>, посчитав его по устаревшему прочитанному значению.</p>
+  <pre><code>// ПЛОХО: потерянное обновление (lost update)
+var qty int
+tx.QueryRow(ctx, `SELECT qty FROM stock WHERE sku = $1`, sku).Scan(&amp;qty) // прочитали 5, блокировки нет
+if qty &lt; n { return ErrNotEnough }
+tx.Exec(ctx, `UPDATE stock SET qty = $1 WHERE sku = $2`, qty-n, sku)   // пишем 4, затирая чужие -1</code></pre>
+  <p>Две транзакции прочитали 5, обе списали по 1, обе записали 4. Одно списание потерялось. При этом <code>UPDATE</code> здесь честно взял блокировку и честно отработал — он просто записал ровно то число, которое ему принесли.</p>
+  <p>Два способа это вылечить, и оба рабочие:</p>
+  <pre><code>-- Вариант 1: пусть новое значение считает сама БД
+UPDATE stock SET qty = qty - $1 WHERE sku = $2 AND qty &gt;= $1;
+
+-- Вариант 2: сначала заблокировать, потом читать и решать
+SELECT qty FROM stock WHERE sku = $1 FOR UPDATE;   -- дальше решение в Go
+UPDATE stock SET qty = $1 WHERE sku = $2;</code></pre>
+  <p>Почему первый вариант безопасен: <code>qty - $1</code> вычисляется от <b>той версии строки, которую БД перечитала после ожидания</b>, а не от того, что лежало в памяти Go полсекунды назад. Проверка <code>qty &gt;= $1</code> тоже проверяется заново на свежей версии. Всё решение целиком живёт в одном запросе, и «между» в нём просто нет места.</p>
+  <p>Отсюда правило-однострочник: <b><code>SET qty = qty - $1</code> безопасно, <code>SET qty = $computed</code> — нет.</b></p>
+
+  <h2>Как узнать, что UPDATE ничего не сделал</h2>
+  <p>Атомарный <code>UPDATE ... WHERE</code> ничего не рассказывает о причине. Он говорит только «затронуто 0 строк», а это два разных случая:</p>
+  <pre><code>res, err := tx.Exec(ctx,
+    `UPDATE stock SET qty = qty - $1 WHERE sku = $2 AND qty &gt;= $1`, n, sku)
+if err != nil {
+    return err
+}
+if res.RowsAffected() == 0 {
+    return ErrSomething // но что именно? товара нет или остатка не хватило?
+}</code></pre>
+  <p>Три способа различить:</p>
+  <ul>
+    <li><b><code>RETURNING</code></b> — самый дешёвый. <code>UPDATE ... RETURNING qty</code> делает ровно то же одним запросом, но возвращает код новое значение. Если ответ пустой — одна из двух причин, но дальше можно обойтись одним проверочным <code>SELECT</code>.</li>
+    <li><b>Отдельная проверка существования</b> после нуля строк: <code>SELECT 1 FROM stock WHERE sku = $1</code>. Нашлось — значит, не хватило остатка.</li>
+    <li><b><code>FOR UPDATE</code></b> — если причин отказа много и каждая со своим сообщением пользователю, читаешь строку под блокировкой и разбираешь все случаи в Go явно.</li>
+  </ul>
+  <p>Это и есть честная причина, по которой <code>FOR UPDATE</code> берут даже там, где технически хватило бы одного <code>UPDATE</code>: не ради безопасности, а ради <b>внятных ошибок и читаемого кода</b>.</p>
+
+  <div id="quiz-2"></div>
+
+  <h2>RETURNING: средний вариант, про который забывают</h2>
+  <pre><code>var left int
+err := tx.QueryRow(ctx,
+    `UPDATE stock SET qty = qty - $1
+     WHERE sku = $2 AND qty &gt;= $1
+     RETURNING qty`, n, sku).Scan(&amp;left)
+switch {
+case errors.Is(err, pgx.ErrNoRows):
+    return ErrNotEnough   // строки нет или условие не выполнено
+case err != nil:
+    return err
+}
+// left - актуальный остаток после списания, можно писать в лог или отдавать наружу</code></pre>
+  <p>Один запрос, одна блокировка, полная атомарность и значение в коде. На собесе это хороший ответ на «а как вы узнаёте результат, если не делаете SELECT FOR UPDATE».</p>
+
+  <h2>Что выбрать</h2>
+  <table>
+    <tr><th>Задача</th><th>Чем делать</th></tr>
+    <tr><td>Списать остаток, условие «не меньше запрошенного»</td><td><code>UPDATE ... WHERE qty &gt;= $1</code>, при желании с <code>RETURNING</code></td></tr>
+    <tr><td>Перевести заказ из <code>new</code> в <code>paid</code></td><td><code>UPDATE ... WHERE id = $1 AND status = 'new'</code>. 0 строк — переход уже сделан или невозможен</td></tr>
+    <tr><td>Начислить бонус по правилам, которые читаются из конфига и зависят от тарифа</td><td><code>FOR UPDATE</code>: расчёт в Go</td></tr>
+    <tr><td>Перевод между двумя счетами</td><td><code>FOR UPDATE</code> обеих строк в порядке <code>ORDER BY id</code></td></tr>
+    <tr><td>Нужны разные ошибки пользователю: «нет товара» и «не хватает»</td><td><code>FOR UPDATE</code> или <code>UPDATE ... RETURNING</code> плюс проверка существования</td></tr>
+    <tr><td>Очередь задач, воркеры берут по одной</td><td><code>SELECT ... FOR UPDATE SKIP LOCKED</code>, затем <code>UPDATE</code></td></tr>
+    <tr><td>Инкремент счётчика</td><td><code>UPDATE ... SET n = n + 1</code>. <code>FOR UPDATE</code> здесь только замедлит</td></tr>
+  </table>
+  <p>Эвристика на собес: <b>если проверку и новое значение удаётся записать в <code>WHERE</code> и <code>SET</code> — берём <code>UPDATE</code>. Если нет — <code>FOR UPDATE</code>.</b></p>
+
+  <h2>Врезка: FOR UPDATE чуть строже, чем UPDATE</h2>
+  <p>Одна тонкость, которая отличает уверенный ответ от зубрёжки. «Точно такая же блокировка» — упрощение. В PostgreSQL <code>UPDATE</code>, который <b>не меняет ключевые столбцы</b> (входящие в уникальные индексы, на которые ссылаются внешние ключи), берёт более слабый режим — <code>FOR NO KEY UPDATE</code>. Он не мешает другой транзакции вставить дочернюю строку с внешним ключом на эту.</p>
+  <p>А явный <code>SELECT ... FOR UPDATE</code> всегда берёт максимальный режим и такую вставку заблокирует. Поэтому <code>FOR UPDATE</code> «на всякий случай» в горячем месте способен создать очередь там, где обычный <code>UPDATE</code> её не создавал. Если нужна блокировка только от изменения самой строки, есть <code>SELECT ... FOR NO KEY UPDATE</code>.</p>
+
+  <h2>Врезка: порядок строк и deadlock</h2>
+  <p>Ещё одно реальное различие. При обновлении нескольких строк одним запросом порядок выбирает планировщик, а не ты:</p>
+  <pre><code>-- A:
+UPDATE accounts SET balance = balance + 10 WHERE id IN (1, 2);
+-- B одновременно:
+UPDATE accounts SET balance = balance - 10 WHERE id IN (2, 1);</code></pre>
+  <p>Нет гарантии, что обе пойдут в одном порядке — возможен deadlock и ошибка <code>40P01</code> у одной из них. Когда порядок важен, его задают явно блокировкой:</p>
+  <pre><code>SELECT id FROM accounts WHERE id = ANY($1) ORDER BY id FOR UPDATE;
+-- дальше UPDATE, порядок захвата уже предсказуем</code></pre>
+  <p>Это не повод обвешивать блокировками всё: для одной строки по первичному ключу deadlock-а из порядка не возникает.</p>
+
+  <div id="quiz-3"></div>
+
+  <h2>Частая ошибка на собесе</h2>
+  <p><b>«Обычный <code>UPDATE</code> не блокирует строку, поэтому нужен <code>FOR UPDATE</code>».</b> Самая частая и самая заметная. Блокирует, и до конца транзакции.</p>
+  <p><b>«<code>FOR UPDATE</code> нужен, чтобы <code>UPDATE</code> стал атомарным».</b> Отдельный <code>UPDATE</code> атомарен и без него. <code>FOR UPDATE</code> делает атомарной <b>связку «прочитал — решил — записал»</b>, а не сам <code>UPDATE</code>.</p>
+  <p><b>«<code>UPDATE</code> защищает от потерянного обновления».</b> Только если новое значение вычисляется из текущего прямо в SQL. Если его посчитали в приложении по отдельному <code>SELECT</code> без блокировки — это ровно тот самый lost update.</p>
+  <p><b>Ставить <code>FOR UPDATE</code> перед <code>UPDATE</code> той же одной строки «для надёжности».</b> Лишний round-trip и более долгая блокировка без всякой выгоды. Если между ними нет решения, которое нельзя выразить в SQL, вторая блокировка ничего не добавляет.</p>
+
+  <div class="callout">
+    Формулировка для собеса: «Обычный <code>UPDATE</code> сам ставит блокировку строки до конца транзакции, так что одиночный <code>UPDATE ... WHERE</code> уже атомарен и безопасен — особенно если новое значение считается из текущего в самом SQL, вроде <code>SET qty = qty - $1 WHERE qty &gt;= $1</code>. <code>FOR UPDATE</code> я беру не ради блокировки как таковой, а когда решение принимается в коде между чтением и записью: это заблокировать строку заранее, чтобы прочитанное не устарело. Нужно вернуть значение — часто хватает <code>UPDATE ... RETURNING</code>. Потерянное обновление появляется не от <code>UPDATE</code>, а от чтения без блокировки перед ним.»
+  </div>
+
+  <div id="quiz-4"></div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/theory/backendinterview/db/relational/mysql/concurency.md</code> (строка «такую же блокировку ставит обычный UPDATE», deadlock и фиксированный порядок операций); <code>InterviewPro/docs/questions/database/topic_06_isolation_levels_mvcc.md</code> (определение Lost Update); <a href="https://www.postgresql.org/docs/current/explicit-locking.html">PostgreSQL Docs — Explicit Locking</a> (режимы блокировки строк, <code>FOR NO KEY UPDATE</code> у обычного UPDATE); <a href="https://www.postgresql.org/docs/current/transaction-iso.html">PostgreSQL Docs — Transaction Isolation</a> (перепроверка строки у UPDATE на Read Committed); <a href="https://www.postgresql.org/docs/current/dml-returning.html">PostgreSQL Docs — Returning Data from Modified Rows</a>.</p>
+
+  <div class="ask-teacher">Если что-то из этого осталось непонятным — просто спроси, разберём отдельно.</div>
+
+  <div class="nav-links">
+    <a href="../reference/0006-for-update-vs-update.html">Шпаргалка по теме →</a>
+    <a href="0005-select-for-update-read-committed.html">← SELECT FOR UPDATE на Read Committed</a>
+  </div>
+
+</div>
+
+<script src="../../../assets/quiz.js"></script>
+<script>
+new Quiz(document.getElementById('quiz-1'), {
+  prompt: 'PostgreSQL, Read Committed. Транзакция A выполнила UPDATE строки и ещё не закоммитилась. Транзакция B выполняет UPDATE той же строки. Что будет с B?',
+  options: [
+    'Ждёт конца A: обычный UPDATE тоже блокирует строку',
+    'Сразу пишет: блокировку ставит только SELECT FOR UPDATE',
+    'Падает с ошибкой 40001, потому что строка уже занята'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — блокировку строки ставит и обычный UPDATE, причём до конца транзакции. На Read Committed B дождётся и перечитает свежую версию.',
+    incorrect: 'Неверно. Обычный UPDATE берёт блокировку строки ровно так же, и B будет ждать коммита A. Ошибка 40001 была бы на Repeatable Read.'
+  }
+});
+new Quiz(document.getElementById('quiz-2'), {
+  prompt: 'Код: SELECT qty (без блокировки), затем в Go вычисляется qty-n, затем UPDATE SET qty = $вычисленное. Что здесь сломано?',
+  options: [
+    'UPDATE не взял блокировку, её ставит лишь FOR UPDATE',
+    'Решение принято на значении, которое могло устареть',
+    'Ничего, UPDATE атомарен и значит код безопасен'
+  ],
+  correctIndex: 1,
+  feedback: {
+    correct: 'Верно — это потерянное обновление. Лечится либо SET qty = qty - $1 WHERE qty >= $1, либо блокировкой FOR UPDATE до чтения.',
+    incorrect: 'Неверно. UPDATE блокировку взял и сам по себе атомарен, но ему принесли число, посчитанное по уже устаревшему чтению. Это lost update.'
+  }
+});
+new Quiz(document.getElementById('quiz-3'), {
+  prompt: 'UPDATE stock SET qty = qty - $1 WHERE sku = $2 AND qty >= $1 вернул 0 затронутых строк. Что это означает?',
+  options: [
+    'Только то, что остатка не хватило на списание',
+    'Только то, что товара с таким sku нет в таблице',
+    'Либо товара нет, либо остатка не хватило — не различить'
+  ],
+  correctIndex: 2,
+  feedback: {
+    correct: 'Верно — ноль строк не говорит о причине. Различают через RETURNING, отдельную проверку существования или через чтение строки под FOR UPDATE.',
+    incorrect: 'Неверно. Условие WHERE объединяет обе причины, и число затронутых строк их не разделяет. Нужен RETURNING, отдельный SELECT или FOR UPDATE.'
+  }
+});
+new Quiz(document.getElementById('quiz-4'), {
+  prompt: 'Нужно перевести заказ из статуса new в paid и больше ничего не считать. Что выбрать?',
+  options: [
+    'UPDATE orders SET status=... WHERE id=$1 AND status=\'new\'',
+    'SELECT status ... FOR UPDATE, проверка в Go, затем UPDATE',
+    'Transaction на Serializable с повтором при ошибке 40001'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — проверка и запись уместились в один запрос. 0 затронутых строк означает, что переход уже сделан или невозможен.',
+    incorrect: 'Неверно. Оба других варианта корректны, но здесь решение целиком выражается в WHERE, поэтому хватает одного UPDATE без явной блокировки.'
+  }
+});
+</script>
+</body>
+</html>

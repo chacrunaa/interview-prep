@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Стоимость запроса: шпаргалка</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Architecture · Шпаргалка</p>
+  <h1>Стоимость запроса: шпаргалка</h1>
+  <p class="sidenote">Полный разбор: <a href="../lessons/0003-request-cost-endpoint-mix.html">урок 0003</a>.</p>
+
+  <h2>Главное</h2>
+  <p>Нагрузка = <b>Σ (RPS × стоимость)</b> по эндпоинтам, а не сумма RPS. 100 тяжёлых RPS могут весить больше, чем 10 000 лёгких.</p>
+
+  <h2>Пример</h2>
+  <table>
+    <tr><th>Эндпоинт</th><th>RPS</th><th>CPU</th><th>Нагрузка</th></tr>
+    <tr><td>/health</td><td>8 000</td><td>0,1 мс</td><td>0,8</td></tr>
+    <tr><td>/products</td><td>1 900</td><td>2 мс</td><td>3,8</td></tr>
+    <tr><td>/report</td><td>100</td><td>500 мс</td><td>50</td></tr>
+  </table>
+  <p>/report: 1% запросов, ≈92% нагрузки. «CPU-сек/сек» = сколько ядер заняты.</p>
+
+  <h2>Запросов в полёте</h2>
+  <pre><code>в полёте = RPS × время ответа
+/report: 100 × 2 с = 200 одновременно → упирается в пул, лёгкие стоят в очереди</code></pre>
+
+  <h2>Где смотреть</h2>
+  <pre><code>-- Prometheus: доля по числу и по времени
+sum by (path) (rate(http_request_duration_seconds_count[5m]))
+sum by (path) (rate(http_request_duration_seconds_sum[5m]))
+
+-- Postgres: кто съедает время базы
+SELECT calls, total_exec_time, mean_exec_time, left(query,60)
+FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 5;</code></pre>
+
+  <h2>Профиль в трёх строках</h2>
+  <ol>
+    <li>Доли запросов по эндпоинтам.</li>
+    <li>Самый тяжёлый: доля по числу и по времени.</li>
+    <li>Что сломается первым при росте.</li>
+  </ol>
+
+  <h2>Ответ вслух</h2>
+  <p class="callout">«X RPS на пике, но нагрузка неоднородна. A% запросов лёгкие и дают B% времени. Самый тяжёлый — …: C% запросов, D% времени и обращений к базе. Его вынесли в фон / ограничили / кешировали».</p>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>RPS без профиля.</li>
+    <li>Доля по числу ≠ доля по времени.</li>
+    <li>Тяжёлые занимают не только CPU, но и пул и вытесняют лёгкие.</li>
+    <li>Придуманные доли: показать на дашборде не сможешь.</li>
+  </ul>
+</div>
+</body>
+</html>

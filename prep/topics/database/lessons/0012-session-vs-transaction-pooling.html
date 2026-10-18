@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Session и transaction pooling</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · PostgreSQL · Соединения</p>
+  <h1>Session pooling против transaction pooling: состояние живёт не дольше транзакции</h1>
+  <p class="lede">Одна победа этого урока: ты знаешь одно правило — <b>при transaction pooling всё, что должно пережить <code>COMMIT</code>, теряется или утекает к чужому клиенту</b> — и по нему сам выводишь список того, что ломается: <code>SET</code>, advisory lock, <code>LISTEN</code>, временные таблицы, prepared statements.</p>
+
+  <p class="sidenote">В банке вопросов этой темы почти нет: только строка «pgBouncer для PostgreSQL» в <code>integration/topic_07</code>. Урок построен на документации PgBouncer и pgx (ссылки внизу).</p>
+
+  <h2>Зачем вообще внешний пул</h2>
+  <p>В PostgreSQL одно соединение — это <b>отдельный процесс на сервере</b>, несколько мегабайт памяти. Поэтому <code>max_connections</code> обычно сотни, а не тысячи. Теперь посчитай: 30 подов Go-сервиса × <code>pgxpool</code> на 20 соединений = 600 соединений, и большинство из них простаивают.</p>
+  <p><b>PgBouncer</b> встаёт между приложением и базой: к нему подключаются 600 клиентов, а он держит к PostgreSQL, скажем, 50 настоящих соединений и раздаёт их по очереди. Главный вопрос — <b>на сколько он отдаёт настоящее соединение клиенту</b>. Ответ и есть режим пула.</p>
+
+  <h2>Аналогия</h2>
+  <p>Ресторан, мало столиков, много гостей.</p>
+  <ul>
+    <li><b>Session pooling</b> — тебе дают столик <b>на весь вечер</b>, пока не уйдёшь. Можешь оставить на нём пальто и записки, они дождутся. Но пока ты сидишь и думаешь, столик никому не достанется.</li>
+    <li><b>Transaction pooling</b> — столик дают <b>на одно блюдо</b>. Доел — встаёшь, за стол садится следующий. Следующее блюдо тебе подадут за другим столиком. Что забыл на прошлом — либо пропало для тебя, либо досталось чужому гостю.</li>
+  </ul>
+
+  <h2>Формально</h2>
+  <table>
+    <tr><th></th><th>Session pooling</th><th>Transaction pooling</th></tr>
+    <tr><td>Серверное соединение закреплено за клиентом</td><td>с подключения клиента до его отключения</td><td>с <code>BEGIN</code> до <code>COMMIT</code>/<code>ROLLBACK</code>; запрос вне транзакции — на один запрос</td></tr>
+    <tr><td>Сколько клиентов на одно серверное соединение</td><td>по очереди, но клиент держит его долго</td><td>много, переключение после каждой транзакции</td></tr>
+    <tr><td>Что работает из возможностей PostgreSQL</td><td>всё</td><td>всё, что не выходит за границы одной транзакции</td></tr>
+    <tr><td>Экономия соединений</td><td>слабая, если клиенты держат соединения открытыми</td><td>сильная — ради неё PgBouncer и ставят</td></tr>
+  </table>
+  <p>Есть ещё <b>statement pooling</b> — соединение на один запрос, транзакции из нескольких запросов запрещены. Встречается редко, достаточно знать, что он есть.</p>
+  <p>Важная деталь про Go: <code>pgxpool</code> держит соединения открытыми постоянно. Значит, в session mode PgBouncer просто закрепит за каждым из них серверное соединение навсегда — экономии почти нет. Поэтому на практике PgBouncer перед Go-сервисами почти всегда в <b>transaction mode</b>, и вся сложность урока — про него.</p>
+
+  <div id="quiz-1"></div>
+
+  <h2>Одно правило вместо списка</h2>
+  <p><b>Состояние сессии</b> — всё, что PostgreSQL запоминает «на соединение», а не «на транзакцию». В transaction mode соединение после <code>COMMIT</code> уходит другому клиенту. Отсюда два симптома:</p>
+  <ul>
+    <li><b>Пропало:</b> твой следующий запрос попал на другое серверное соединение, где этого состояния нет.</li>
+    <li><b>Утекло:</b> на твоём прошлом соединении состояние осталось, и его получил чужой клиент.</li>
+  </ul>
+  <p>Теперь список из документации PgBouncer выводится сам:</p>
+  <table>
+    <tr><th>Что</th><th>Почему ломается</th><th>Чем заменить</th></tr>
+    <tr><td><code>SET search_path / statement_timeout / timezone</code></td><td>настройка живёт на соединении</td><td><code>SET LOCAL</code> внутри транзакции; или параметры в строке подключения</td></tr>
+    <tr><td><code>pg_advisory_lock</code> (сессионная advisory-блокировка)</td><td>блокировка остаётся на соединении, которое ушло чужому; <code>unlock</code> уйдёт на другое</td><td><code>pg_advisory_xact_lock</code> — снимается на <code>COMMIT</code></td></tr>
+    <tr><td><code>LISTEN</code></td><td>подписка на соединении, уведомления придут чужому клиенту</td><td>отдельное прямое соединение к PostgreSQL</td></tr>
+    <tr><td>Временные таблицы между транзакциями</td><td>таблица живёт на соединении</td><td><code>CREATE TEMP TABLE ... ON COMMIT DROP</code> внутри одной транзакции</td></tr>
+    <tr><td><code>PREPARE</code> на уровне SQL, курсоры <code>WITH HOLD</code></td><td>объект на соединении</td><td>не использовать через PgBouncer</td></tr>
+    <tr><td>Prepared statements на уровне протокола (их делает pgx)</td><td>подготовлены на одном соединении, выполняются на другом</td><td>PgBouncer 1.21+ с <code>max_prepared_statements</code> &gt; 0, или выключить кэш в pgx</td></tr>
+  </table>
+  <p>И зеркально: <b>всё, что внутри одной транзакции, работает как обычно</b>. Транзакция целиком едет на одном серверном соединении.</p>
+
+  <div id="quiz-2"></div>
+
+  <h2>Код: как это выглядит в Go</h2>
+  <p>Плохо: настройка сессии отдельным запросом.</p>
+  <pre><code>// ПЛОХО: два вызова пула = возможно, два разных соединения
+pool.Exec(ctx, `SET search_path = tenant_42`)
+rows, _ := pool.Query(ctx, `SELECT * FROM orders`) // search_path может быть чужим или дефолтным</code></pre>
+  <p>Неочевидный момент: <b>это сломано даже без PgBouncer</b>. <code>pgxpool</code> сам раздаёт соединения по запросам, и два вызова <code>pool.Exec</code> / <code>pool.Query</code> вполне могут уйти на разные соединения. А «утечка» тоже есть: <code>tenant_42</code> останется на том соединении, и его получит следующий запрос другого пользователя. По сути, Go-пул уже ведёт себя как transaction pooling.</p>
+  <p>Хорошо: всё состояние — внутри транзакции и <code>LOCAL</code>.</p>
+  <pre><code>err := pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+    // живёт до COMMIT/ROLLBACK, на следующего клиента не утечёт
+    if _, err := tx.Exec(ctx, `SELECT set_config('search_path', $1, true)`, schema); err != nil {
+        return err
+    }
+    if _, err := tx.Exec(ctx, `SET LOCAL statement_timeout = '2s'`); err != nil {
+        return err
+    }
+    _, err := tx.Exec(ctx, `UPDATE orders SET status = 'paid' WHERE id = $1`, id)
+    return err
+})</code></pre>
+  <p><code>set_config(..., true)</code> — то же, что <code>SET LOCAL</code>, только позволяет передать значение параметром. Так же передают <code>app.user_id</code> для политик Row Level Security.</p>
+  <p>Advisory lock для «только один воркер выполняет задачу»:</p>
+  <pre><code>// ПЛОХО в transaction mode: блокировка висит на соединении, которое уже обслуживает чужих
+pool.Exec(ctx, `SELECT pg_advisory_lock(42)`)
+doWork()
+pool.Exec(ctx, `SELECT pg_advisory_unlock(42)`) // скорее всего, уйдёт на другое соединение
+
+// ХОРОШО: блокировка транзакции, снимется на COMMIT сама
+pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+    var got bool
+    if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(42)`).Scan(&amp;got); err != nil || !got {
+        return err
+    }
+    return doWorkInTx(tx)
+})</code></pre>
+
+  <h2>Prepared statements и pgx</h2>
+  <p>Самая частая реальная поломка. pgx по умолчанию <b>кэширует prepared statements</b>: первый раз готовит запрос на соединении, дальше выполняет по имени. Через PgBouncer в transaction mode подготовлен он на одном серверном соединении, а выполнить его пытаются на другом — там такого имени нет (или, наоборот, уже есть). В логах это выглядит как ошибки вида <code>prepared statement "stmtcache_..." does not exist</code>.</p>
+  <p>Два пути:</p>
+  <ul>
+    <li><b>Новый PgBouncer:</b> начиная с версии 1.21 он сам отслеживает prepared statements уровня протокола, если включить <code>max_prepared_statements</code>. Тогда pgx можно оставить как есть.</li>
+    <li><b>Старый PgBouncer:</b> переключить pgx на режим без кэша.</li>
+  </ul>
+  <pre><code>cfg, _ := pgxpool.ParseConfig(dsn)
+cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec // без именованных prepared statements
+pool, _ := pgxpool.NewWithConfig(ctx, cfg)</code></pre>
+
+  <div id="quiz-3"></div>
+
+  <h2>Как это обычно устроено в проде</h2>
+  <ul>
+    <li>Обычные запросы сервиса → <b>PgBouncer в transaction mode</b>.</li>
+    <li>Миграции, <code>LISTEN</code>, долгие сессионные advisory-блокировки, ручные сессии в <code>psql</code> → <b>напрямую в PostgreSQL</b> (или через отдельный пул в session mode). Часто это просто второй DSN в конфиге.</li>
+  </ul>
+  <p>Это и есть ответ на вопрос «какие ограничения накладывает»: приложение должно быть <b>stateless по отношению к соединению</b> — не рассчитывать, что следующий запрос попадёт туда же, куда предыдущий, и не оставлять на соединении ничего после транзакции.</p>
+
+  <h2>Частая ошибка на собесе</h2>
+  <p><b>«Transaction pooling — это пул, где каждый запрос в транзакции».</b> Нет: это про то, <b>на сколько закрепляется</b> серверное соединение — на одну транзакцию.</p>
+  <p><b>«В transaction mode нельзя пользоваться транзакциями».</b> Наоборот, транзакции работают полностью — ломается только то, что живёт дольше транзакции.</p>
+  <p><b>«Если PgBouncer нет, можно делать <code>SET</code> отдельным запросом».</b> С <code>pgxpool</code> или <code>database/sql</code> — тоже нельзя: два вызова пула могут попасть на разные соединения. Нужна транзакция или явно взятое соединение (<code>pool.Acquire</code>).</p>
+  <p><b>Путать два пула.</b> <code>pgxpool</code> — пул внутри одного процесса Go. PgBouncer — общий пул между всеми процессами и базой. Они стоят друг за другом, и один не заменяет другой.</p>
+
+  <div class="callout">
+    Формулировка для собеса: «В session pooling серверное соединение закрепляется за клиентом до его отключения — работает всё, но экономии мало, особенно с Go-пулами, которые держат соединения открытыми. В transaction pooling соединение даётся на одну транзакцию, после <code>COMMIT</code> уходит другому клиенту — экономия большая, но всё сессионное состояние либо теряется, либо утекает: <code>SET</code>, сессионные advisory-блокировки, <code>LISTEN</code>, временные таблицы, prepared statements. Поэтому состояние держу внутри транзакции — <code>SET LOCAL</code>, <code>pg_advisory_xact_lock</code>, — для pgx включаю поддержку prepared statements в PgBouncer 1.21+ или выключаю кэш, а миграции и <code>LISTEN</code> пускаю напрямую в базу.»
+  </div>
+
+  <div id="quiz-4"></div>
+
+  <p class="source-rec">Источники: <a href="https://www.pgbouncer.org/features.html">PgBouncer — Features</a> (режимы session / transaction / statement и таблица, какие возможности PostgreSQL работают в каждом); <a href="https://www.pgbouncer.org/config.html">PgBouncer — Configuration</a> (<code>pool_mode</code>, <code>max_prepared_statements</code>); <a href="https://pkg.go.dev/github.com/jackc/pgx/v5#QueryExecMode">pgx — QueryExecMode</a> (режимы выполнения и кэш prepared statements); <code>InterviewPro/docs/questions/integration/topic_07_networks_security.md</code> (pgBouncer как пример connection pooling — в банке это всё).</p>
+
+  <div class="ask-teacher">Если что-то из этого осталось непонятным — просто спроси, разберём отдельно.</div>
+
+  <div class="nav-links">
+    <a href="../reference/0012-session-vs-transaction-pooling.html">Шпаргалка по теме →</a>
+    <a href="0011-shared-exclusive-locks.html">← Shared и exclusive lock</a>
+  </div>
+</div>
+<script src="../../../assets/quiz.js"></script>
+<script>
+new Quiz(document.getElementById('quiz-1'), {
+  prompt: 'PgBouncer в transaction mode. Клиент выполнил BEGIN; три запроса; COMMIT. На скольких серверных соединениях это выполнилось?',
+  options: [
+    'На одном: соединение закреплено до COMMIT',
+    'На трёх: каждый запрос получает своё',
+    'На любом числе: решает балансировщик'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — транзакция целиком едет на одном серверном соединении. Переключение только после COMMIT или ROLLBACK.',
+    incorrect: 'Неверно. В transaction mode соединение закрепляется на всю транзакцию — иначе транзакции не работали бы вовсе. Отдельно по запросам режет statement mode.'
+  }
+});
+new Quiz(document.getElementById('quiz-2'), {
+  prompt: 'Через PgBouncer в transaction mode сервис делает SET statement_timeout отдельным запросом. Что плохого?',
+  options: [
+    'Настройку получат чужие, а у нас её может не быть',
+    'PostgreSQL отклонит SET вне явной транзакции',
+    'Ничего: PgBouncer запомнит её для клиента'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — настройка осталась на серверном соединении, которое ушло другому клиенту, а наш следующий запрос попадёт на другое. Лечится SET LOCAL в транзакции.',
+    incorrect: 'Неверно. SET выполнится, но останется на серверном соединении: оно уйдёт чужому клиенту, а наш следующий запрос может попасть туда, где настройки нет.'
+  }
+});
+new Quiz(document.getElementById('quiz-3'), {
+  prompt: 'Go-сервис на pgx с настройками по умолчанию перевели на PgBouncer 1.18 в transaction mode. Что вероятнее всего сломается?',
+  options: [
+    'Кэш prepared statements: имена не на том соединении',
+    'Транзакции: PgBouncer не пропускает BEGIN/COMMIT',
+    'Пул pgxpool: он несовместим с внешним пулером'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — pgx кэширует prepared statements на соединении, а PgBouncer до 1.21 их не отслеживает. Лечится обновлением с max_prepared_statements или QueryExecModeExec.',
+    incorrect: 'Неверно. Транзакции и pgxpool работают. Ломается кэш prepared statements pgx: подготовлен на одном серверном соединении, выполняется на другом.'
+  }
+});
+new Quiz(document.getElementById('quiz-4'), {
+  prompt: 'Без всякого PgBouncer: pool.Exec("SET search_path = t42"), затем pool.Query("SELECT ..."). Безопасно ли это с pgxpool?',
+  options: [
+    'Нет: два вызова пула могут взять разные соединения',
+    'Да: без PgBouncer соединение всегда одно и то же',
+    'Да: pgxpool сам переносит SET между соединениями'
+  ],
+  correctIndex: 0,
+  feedback: {
+    correct: 'Верно — pgxpool уже раздаёт соединения по запросам, и SET ещё и утечёт следующему пользователю этого соединения. Нужна транзакция с SET LOCAL или pool.Acquire.',
+    incorrect: 'Неверно. pgxpool — тоже пул: каждый вызов берёт свободное соединение. SET может остаться не там и утечь другому запросу. Нужна транзакция или pool.Acquire.'
+  }
+});
+</script>
+</body>
+</html>

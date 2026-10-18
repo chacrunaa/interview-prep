@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: Read Committed</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Транзакции · Шпаргалка</p>
+  <h1>Read Committed — шпаргалка</h1>
+
+  <p><b>Суть:</b> читаешь только зафиксированное. Грязного чтения нет, но между двумя запросами в одной транзакции данные могут поменяться.</p>
+
+  <table>
+    <tr><th>Аномалия</th><th>На Read Committed</th></tr>
+    <tr><td>Грязное чтение</td><td><b>защищено</b></td></tr>
+    <tr><td>Неповторяющееся чтение</td><td>возможно</td></tr>
+    <tr><td>Фантомное чтение</td><td>возможно</td></tr>
+    <tr><td>Потерянное обновление (read-modify-write в коде)</td><td>возможно</td></tr>
+  </table>
+
+  <h2>Два способа реализации</h2>
+  <table>
+    <tr><th></th><th>Блокировки</th><th>MVCC</th></tr>
+    <tr><td>Как</td><td>читатель ставит shared-блокировку, писатель ждёт; писатель блокирует строки для читателей</td><td>каждое изменение создаёт новую версию строки; читатель получает последнюю зафиксированную</td></tr>
+    <tr><td>Плюс</td><td>мало памяти</td><td>читатели и писатели не мешают друг другу, быстрее</td></tr>
+    <tr><td>Минус</td><td>ожидания, deadlock</td><td>память под версии, уборка (VACUUM / undo-логи)</td></tr>
+  </table>
+
+  <h2>Конкурентная запись в одну строку</h2>
+  <table>
+    <tr><th>Уровень (PostgreSQL)</th><th>Что делает вторая транзакция</th></tr>
+    <tr><td>Read Committed</td><td>ждёт первую; после её коммита перечитывает строку и применяет свой UPDATE. Ошибки нет</td></tr>
+    <tr><td>Repeatable Read / Serializable</td><td>после коммита первой получает ошибку <code>could not serialize access due to concurrent update</code>, нужен повтор транзакции</td></tr>
+  </table>
+  <p>Правило «первый коммит побеждает, остальные откатываются с ошибкой» из общих учебников — это поведение снимка на Repeatable Read, а не Read Committed.</p>
+
+  <h2>Как не потерять обновление на Read Committed</h2>
+  <pre><code>UPDATE accounts SET balance = balance + 20 WHERE id = 1;       -- считаем в БД
+SELECT balance FROM accounts WHERE id = 1 FOR UPDATE;           -- или блокируем строку</code></pre>
+
+  <h2>Факты для собеса</h2>
+  <ul>
+    <li>Read Committed — уровень по умолчанию в PostgreSQL. В MySQL InnoDB по умолчанию Repeatable Read.</li>
+    <li>В PostgreSQL на Read Committed каждый <b>запрос</b> видит свой снимок; на Repeatable Read снимок один на всю транзакцию.</li>
+    <li>MVCC не отменяет блокировки записи: две записи в одну строку всё равно ждут друг друга.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «Read Committed гарантирует чтение только зафиксированных данных, то есть грязного чтения нет. Между двумя запросами в транзакции другая может закоммититься, поэтому возможны неповторяющееся чтение и фантомы. Реализуется блокировками или MVCC: при MVCC читатель берёт последнюю зафиксированную версию и не блокирует писателей, а платим памятью под версии.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/theory/backendinterview/db/dBTheory/transactions.md</code>; <code>InterviewPro/docs/questions/database/topic_06_isolation_levels_mvcc.md</code>; <a href="https://www.postgresql.org/docs/current/transaction-iso.html">PostgreSQL Docs — Transaction Isolation</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0004-read-committed.html">← К уроку</a>
+  </div>
+
+</div>
+</body>
+</html>

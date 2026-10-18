@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: FOR UPDATE против UPDATE</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Блокировки · Шпаргалка</p>
+  <h1>FOR UPDATE против UPDATE — шпаргалка</h1>
+
+  <p><b>Суть:</b> обычный <code>UPDATE</code> тоже блокирует строку до конца транзакции. Выбор не «с блокировкой или без», а <b>где решение: в SQL или в коде на Go</b>.</p>
+
+  <h2>Одинаково</h2>
+  <ul>
+    <li>Берут блокировку уровня строки и держат до <code>COMMIT</code> / <code>ROLLBACK</code>.</li>
+    <li>Ждут, если строку занял другой.</li>
+    <li>На Read Committed после ожидания перечитывают свежую версию и заново проверяют <code>WHERE</code>.</li>
+    <li>На Repeatable Read в этой ситуации — ошибка <code>40001</code>.</li>
+    <li>Обычным <code>SELECT</code> не мешают.</li>
+  </ul>
+
+  <h2>Различия</h2>
+  <table>
+    <tr><th></th><th>SELECT ... FOR UPDATE</th><th>UPDATE</th></tr>
+    <tr><td>Где решение</td><td>в Go, между запросами</td><td>в <code>WHERE</code> и <code>SET</code></td></tr>
+    <tr><td>Код видит</td><td>значения строки до записи</td><td>число строк или <code>RETURNING</code></td></tr>
+    <tr><td>Запросов</td><td>два и больше</td><td>один</td></tr>
+    <tr><td>Порядок блокировки строк</td><td>твой, <code>ORDER BY id</code></td><td>на усмотрение планировщика</td></tr>
+    <tr><td>Сила блокировки</td><td>максимальная</td><td><code>FOR NO KEY UPDATE</code>, если ключи не менялись</td></tr>
+  </table>
+
+  <h2>Главное правило</h2>
+  <table>
+    <tr><th>Запись</th><th>Безопасность</th></tr>
+    <tr><td><code>SET qty = qty - $1 WHERE qty &gt;= $1</code></td><td>Безопасно: значение считает БД по свежей версии строки</td></tr>
+    <tr><td><code>SET qty = $computed</code> после <code>SELECT</code> без блокировки</td><td>Потерянное обновление (lost update)</td></tr>
+    <tr><td><code>SET qty = $computed</code> после <code>SELECT ... FOR UPDATE</code></td><td>Безопасно: строка заблокирована до чтения</td></tr>
+  </table>
+
+  <h2>Что выбрать</h2>
+  <table>
+    <tr><th>Задача</th><th>Чем делать</th></tr>
+    <tr><td>Проверка и новое значение влезают в <code>WHERE</code> и <code>SET</code></td><td><code>UPDATE</code>, при желании с <code>RETURNING</code></td></tr>
+    <tr><td>Переход статуса</td><td><code>UPDATE ... WHERE id=$1 AND status='new'</code></td></tr>
+    <tr><td>Инкремент счётчика</td><td><code>UPDATE ... SET n = n + 1</code></td></tr>
+    <tr><td>Расчёт в Go по правилам из конфига</td><td><code>FOR UPDATE</code></td></tr>
+    <tr><td>Несколько связанных строк (перевод)</td><td><code>FOR UPDATE</code> + <code>ORDER BY id</code></td></tr>
+    <tr><td>Нужны разные причины отказа</td><td><code>RETURNING</code> + проверка существования, либо <code>FOR UPDATE</code></td></tr>
+    <tr><td>Очередь задач</td><td><code>FOR UPDATE SKIP LOCKED</code>, затем <code>UPDATE</code></td></tr>
+  </table>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>0 затронутых строк не говорит о причине: строки нет или условие не выполнено.</li>
+    <li><code>FOR UPDATE</code> перед <code>UPDATE</code> той же строки без решения между ними — лишний round-trip.</li>
+    <li><code>UPDATE ... WHERE id IN (1,2)</code> встречными транзакциями — риск deadlock <code>40P01</code> из непредсказуемого порядка.</li>
+    <li><code>FOR UPDATE</code> строже обычного <code>UPDATE</code>: мешает вставке дочерних строк по внешнему ключу.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «Обычный <code>UPDATE</code> сам блокирует строку до конца транзакции, поэтому одиночный <code>UPDATE ... WHERE</code> уже атомарен — особенно когда новое значение считается из текущего в SQL. <code>FOR UPDATE</code> беру, когда решение принимается в коде между чтением и записью. Нужно значение обратно — <code>UPDATE ... RETURNING</code>. Потерянное обновление даёт не <code>UPDATE</code>, а чтение без блокировки перед ним.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/theory/backendinterview/db/relational/mysql/concurency.md</code>; <code>InterviewPro/docs/questions/database/topic_06_isolation_levels_mvcc.md</code>; <a href="https://www.postgresql.org/docs/current/explicit-locking.html">PostgreSQL Docs — Explicit Locking</a>; <a href="https://www.postgresql.org/docs/current/dml-returning.html">PostgreSQL Docs — RETURNING</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0006-for-update-vs-update.html">← К уроку</a>
+    <a href="0005-select-for-update-read-committed.html">Шпаргалка по FOR UPDATE →</a>
+  </div>
+
+</div>
+</body>
+</html>

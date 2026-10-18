@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: optimistic locking и повтор транзакции</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+  <p class="kicker">Database · Транзакции · Шпаргалка</p>
+  <h1>Optimistic locking и ошибка сериализации — шпаргалка</h1>
+  <p><b>Суть:</b> оптимистичная блокировка ничего не блокирует — это проверка <code>version</code> при записи. Конфликт версии замечает <b>приложение</b> (0 строк), ошибку сериализации — <b>база</b> (<code>40001</code>).</p>
+
+  <h2>Реализация</h2>
+  <pre><code>-- читаем без блокировки
+SELECT id, address, version FROM orders WHERE id = $1;      -- version = 7
+-- пишем с проверкой и инкрементом
+UPDATE orders SET address = $2, version = version + 1
+WHERE id = $1 AND version = $3;                               -- $3 = 7
+-- RowsAffected() == 0  →  ErrVersionConflict (или строку удалили)</code></pre>
+
+  <h2>Конфликт версии против 40001</h2>
+  <table>
+    <tr><th></th><th>Конфликт версии</th><th>Ошибка сериализации</th></tr>
+    <tr><td>Кто заметил</td><td>приложение</td><td>PostgreSQL</td></tr>
+    <tr><td>Сигнал</td><td>0 затронутых строк</td><td><code>SQLSTATE 40001</code></td></tr>
+    <tr><td>Уровень</td><td>любой (обычно Read Committed)</td><td>Repeatable Read, Serializable</td></tr>
+    <tr><td>Охват</td><td>строки с проверкой <code>version</code></td><td>всё, что транзакция читала и писала</td></tr>
+    <tr><td>Транзакция</td><td>живая</td><td>мертва, только <code>ROLLBACK</code></td></tr>
+    <tr><td>Окно чтение→запись</td><td>любое, даже между HTTP-запросами</td><td>внутри одной транзакции</td></tr>
+  </table>
+
+  <h2>Когда повторять</h2>
+  <table>
+    <tr><th>Сигнал</th><th>Действие</th></tr>
+    <tr><td><code>40001</code>, <code>40P01</code> (deadlock)</td><td>Вся транзакция с <code>BEGIN</code>, включая чтения. Лимит попыток, пауза с jitter</td></tr>
+    <tr><td>Конфликт версии, версию принёс пользователь</td><td>Не повторять. <code>409 Conflict</code> (или <code>412</code> при <code>If-Match</code>), показать свежие данные</td></tr>
+    <tr><td>Конфликт версии, цикл внутри сервиса</td><td>Повторить «прочитал — решил — записал». Были другие записи по прочитанному — вся транзакция</td></tr>
+  </table>
+
+  <h2>Что выбрать</h2>
+  <table>
+    <tr><th>Ситуация</th><th>Чем</th></tr>
+    <tr><td>Значение считается в SQL</td><td><code>SET n = n - $1 WHERE n &gt;= $1</code></td></tr>
+    <tr><td>Форма, между чтением и записью минуты</td><td>Optimistic locking</td></tr>
+    <tr><td>Горячая строка, конфликты часто</td><td><code>FOR UPDATE</code></td></tr>
+    <tr><td>Решение по многим строкам, write skew</td><td>Serializable + повтор при <code>40001</code></td></tr>
+  </table>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>Проверка версии в Go, а не в <code>WHERE</code> того же <code>UPDATE</code> — гонка.</li>
+    <li>Нет <code>version = version + 1</code> — следующие не узнают о записи.</li>
+    <li>При <code>40001</code> повторять только упавший запрос — транзакция мертва, решения устарели.</li>
+    <li>Автоповтор конфликта из пользовательской формы — тихое затирание чужой правки.</li>
+    <li>Письма и Kafka внутри повторяемой функции — дубли. Побочки после коммита или через outbox.</li>
+    <li>Версия на Repeatable Read: изменение после начала транзакции даёт <code>40001</code>, а не 0 строк — обрабатывать оба.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «Optimistic locking — поле <code>version</code>: <code>UPDATE ... SET ..., version = version + 1 WHERE id = $1 AND version = $2</code>, 0 строк — конфликт, его видит приложение и решает по смыслу: 409 пользователю или повтор. <code>40001</code> возвращает сама база на Repeatable Read и Serializable, транзакция после него мертва, и повторяется вся транзакция с начала.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_06_isolation_levels_mvcc.md</code>; <code>InterviewPro/docs/questions/java/topic_15_hibernate_jpa.md</code>; <a href="https://www.postgresql.org/docs/current/transaction-iso.html">PostgreSQL — Transaction Isolation</a>; <a href="https://www.postgresql.org/docs/current/mvcc-serialization-failure-handling.html">PostgreSQL — Serialization Failure Handling</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0010-optimistic-locking-version.html">← К уроку</a>
+    <a href="0006-for-update-vs-update.html">Шпаргалка FOR UPDATE против UPDATE →</a>
+  </div>
+</div>
+</body>
+</html>

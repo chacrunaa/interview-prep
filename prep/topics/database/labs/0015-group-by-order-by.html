@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Практика: GROUP BY и ORDER BY</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">Database · Практика к уроку 0015</p>
+  <h1>Практика: GROUP BY и ORDER BY на десяти строках</h1>
+  <p class="lede">Семь шагов. Таблица маленькая — все 10 продаж видно глазами, так что любой результат можно проверить в уме. Сначала предскажи, потом открой ответ.</p>
+
+  <p class="sidenote">Все ответы сняты на этом стенде (PostgreSQL 16). Урок: <a href="../lessons/0015-group-by-vs-order-by.html">«GROUP BY и ORDER BY»</a>.</p>
+
+  <h2>Подготовка</h2>
+  <p>Если контейнер <code>join-lab</code> из практики 0014 ещё жив — заходи в него и сразу к <code>\i</code>. Если нет:</p>
+  <pre><code>docker run -d --name join-lab -e POSTGRES_PASSWORD=lab \
+  -v ~/personal/interview-prep/prep/topics/database/labs:/lab:ro \
+  postgres:16.6-alpine
+
+docker exec -it join-lab psql -U postgres</code></pre>
+  <pre><code>\i /lab/0015-group-by-order-by.sql
+SELECT * FROM sales;     -- посмотри на все 10 строк, они понадобятся для предсказаний</code></pre>
+
+  <!-- 1 -->
+  <div class="step">
+    <h2>Шаг 1. ORDER BY не трогает число строк</h2>
+    <pre><code>SELECT * FROM sales ORDER BY amount DESC;</code></pre>
+    <p class="predict"><b>Предскажи:</b> сколько строк? Кто первый?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code> id | customer | category | amount |  sold_on
+----+----------+----------+--------+------------
+  2 | Боря     | техника  |   3000 | 2026-10-01
+  8 | Вика     | техника  |   2500 | 2026-10-04
+  9 | Боря     | одежда   |   1500 | 2026-10-05
+  3 | Аня      | техника  |   1200 | 2026-10-02
+  7 | Гоша     |          |    900 | 2026-10-04
+ 10 | Вика     | одежда   |    800 | 2026-10-05
+  5 | Боря     | книги    |    700 | 2026-10-03
+  1 | Аня      | книги    |    500 | 2026-10-01
+  6 | Аня      | книги    |    400 | 2026-10-03
+  4 | Вика     | книги    |    300 | 2026-10-02
+(10 rows)</code></pre>
+      <p>10 было — 10 осталось. Каждая продажа видна. Это и есть «разложить чеки по сумме».</p>
+    </details>
+  </div>
+
+  <!-- 2 -->
+  <div class="step">
+    <h2>Шаг 2. GROUP BY схлопывает</h2>
+    <pre><code>SELECT customer, count(*) AS cnt, sum(amount) AS total
+FROM sales
+GROUP BY customer;</code></pre>
+    <p class="predict"><b>Предскажи:</b> сколько строк? В каком порядке придут клиенты?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code> customer | cnt | total
+----------+-----+-------
+ Аня      |   3 |  2100
+ Вика     |   3 |  3600
+ Боря     |   3 |  5200
+ Гоша     |   1 |   900
+(4 rows)</code></pre>
+      <p>10 продаж → 4 клиента. И порядок <b>ни алфавитный, ни по сумме</b>. Посмотри, почему:</p>
+      <pre><code>EXPLAIN SELECT customer, sum(amount) FROM sales GROUP BY customer;
+-- HashAggregate
+--   Group Key: customer
+--   -&gt;  Seq Scan on sales</code></pre>
+      <p><code>HashAggregate</code> раскладывает по хэш-таблице, и порядок групп — порядок в ней. Если ты предсказал «по алфавиту» — это и есть миф «GROUP BY сортирует».</p>
+    </details>
+  </div>
+
+  <!-- 3 -->
+  <div class="step">
+    <h2>Шаг 3. Колонка, которой нет в группировке</h2>
+    <pre><code>SELECT customer, category, sum(amount) FROM sales GROUP BY customer;</code></pre>
+    <p class="predict"><b>Предскажи:</b> у Ани три продажи в двух категориях. Что покажет база в колонке <code>category</code>?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code>ERROR:  column "sales.category" must appear in the GROUP BY clause
+        or be used in an aggregate function</code></pre>
+      <p>Ничего не покажет — упадёт. На конверте Ани одна строка, а категорий две: какую писать, база не угадывает. Попробуй оба лечения:</p>
+      <pre><code>SELECT customer, category, sum(amount) FROM sales GROUP BY customer, category;
+SELECT customer, string_agg(category, ', '), sum(amount) FROM sales GROUP BY customer;</code></pre>
+      <p>Первый даст больше групп (клиент + категория), второй склеит категории в строку.</p>
+      <p>А теперь исключение:</p>
+      <pre><code>SELECT id, customer, category, amount FROM sales GROUP BY id;</code></pre>
+      <p>Работает: <code>id</code> — первичный ключ, по нему остальные колонки однозначны. 10 строк — по группе на каждую продажу.</p>
+    </details>
+  </div>
+
+  <!-- 4 -->
+  <div class="step">
+    <h2>Шаг 4. GROUP BY + ORDER BY + LIMIT</h2>
+    <pre><code>SELECT customer, sum(amount) AS total
+FROM sales
+GROUP BY customer
+ORDER BY total DESC
+LIMIT 2;</code></pre>
+    <p class="predict"><b>Предскажи:</b> кто войдёт в топ-2? Посчитай по таблице из шага 2.</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code> customer | total
+----------+-------
+ Боря     |  5200
+ Вика     |  3600
+(2 rows)</code></pre>
+      <p>Сначала конверты, потом их порядок, потом первые два. Алиас <code>total</code> в <code>ORDER BY</code> работает, потому что <code>ORDER BY</code> выполняется после <code>SELECT</code>.</p>
+    </details>
+  </div>
+
+  <!-- 5 -->
+  <div class="step">
+    <h2>Шаг 5. WHERE против HAVING</h2>
+    <pre><code>SELECT customer, sum(amount) AS total
+FROM sales
+WHERE total &gt; 2000
+GROUP BY customer;</code></pre>
+    <p class="predict"><b>Предскажи:</b> алиас в <code>ORDER BY</code> сработал. А здесь?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code>ERROR:  column "total" does not exist</code></pre>
+      <p><code>WHERE</code> работает до группировки и до <code>SELECT</code> — ни сумм, ни алиаса ещё нет. Фильтр по группам:</p>
+      <pre><code>SELECT customer, sum(amount) AS total
+FROM sales
+GROUP BY customer
+HAVING sum(amount) &gt; 2000
+ORDER BY total DESC;</code></pre>
+      <pre><code> customer | total
+----------+-------
+ Боря     |  5200
+ Вика     |  3600
+ Аня      |  2100
+(3 rows)</code></pre>
+      <p>Гоша с 900 отсеялся на шаге <code>HAVING</code>. И последнее из той же логики — попробуй:</p>
+      <pre><code>SELECT customer, sum(amount) FROM sales GROUP BY customer ORDER BY sold_on;</code></pre>
+      <p>Та же ошибка <code>must appear in the GROUP BY clause</code>: у конверта Бори три даты, по какой сортировать?</p>
+    </details>
+  </div>
+
+  <!-- 6 -->
+  <div class="step">
+    <h2>Шаг 6. NULL в группировке и сортировке</h2>
+    <pre><code>SELECT category, count(*) FROM sales GROUP BY category ORDER BY category;
+SELECT category, count(*) FROM sales GROUP BY category ORDER BY category DESC;</code></pre>
+    <p class="predict"><b>Предскажи:</b> у продажи Гоши категории нет. Будет ли она отдельной группой? Где окажется в каждом из двух запросов?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code> category | count            category | count
+----------+-------          ----------+-------
+ книги    |     4                     |     1
+ одежда   |     2           техника   |     3
+ техника  |     3           одежда    |     2
+          |     1           книги     |     4</code></pre>
+      <p><code>GROUP BY</code> собрал <code>NULL</code> в свою группу. <code>ORDER BY</code> в PostgreSQL считает <code>NULL</code> больше любого значения: при <code>ASC</code> он в конце, при <code>DESC</code> — в начале. Попробуй управлять явно: <code>ORDER BY category DESC NULLS LAST</code>.</p>
+    </details>
+  </div>
+
+  <!-- 7 -->
+  <div class="step">
+    <h2>Шаг 7. Одинаковые значения и пагинация</h2>
+    <pre><code>SELECT id, sold_on, amount FROM sales ORDER BY sold_on LIMIT 3;</code></pre>
+    <p class="predict"><b>Предскажи:</b> у продаж 1 и 2 одна дата, 2026-10-01. Какая придёт первой?</p>
+    <details class="answer">
+      <summary>Что должно получиться</summary>
+      <pre><code> id |  sold_on   | amount
+----+------------+--------
+  2 | 2026-10-01 |   3000
+  1 | 2026-10-01 |    500
+  3 | 2026-10-02 |   1200</code></pre>
+      <p>На стенде пришла сначала 2, хотя вставляли 1 раньше. База ничего не обещает о порядке среди равных — у тебя может выйти и иначе, это нормально. В пагинации это превращается в дубли и пропуски между страницами. Лечение:</p>
+      <pre><code>SELECT id, sold_on, amount FROM sales ORDER BY sold_on, id LIMIT 3;</code></pre>
+      <pre><code>  1 | 2026-10-01 |  500
+  2 | 2026-10-01 | 3000
+  3 | 2026-10-02 | 1200</code></pre>
+      <p>Теперь порядок однозначный при любом плане.</p>
+    </details>
+  </div>
+
+  <h2>Уборка</h2>
+  <pre><code>\q
+docker rm -f join-lab</code></pre>
+
+  <div class="callout win">
+    Что ты теперь можешь показать руками: <code>ORDER BY</code> число строк не меняет (1), <code>GROUP BY</code> схлопывает и не сортирует (2), правило колонок и исключение для PK (3), топ-N (4), <code>WHERE</code> против <code>HAVING</code> и порядок выполнения (5), <code>NULL</code> (6), тай-брейк для пагинации (7).
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_02_queries_aggregations.md</code>; <a href="https://www.postgresql.org/docs/current/queries-table-expressions.html">PostgreSQL Docs — Table Expressions</a>; <a href="https://www.postgresql.org/docs/current/queries-order.html">PostgreSQL Docs — Sorting Rows</a>.</p>
+
+  <div class="ask-teacher">Если результат вышел не таким, как в ответе, или что-то непонятно — пришли его мне, разберём.</div>
+
+  <div class="nav-links">
+    <a href="../lessons/0015-group-by-vs-order-by.html">← К уроку</a>
+    <a href="../reference/0015-group-by-vs-order-by.html">Шпаргалка →</a>
+  </div>
+</div>
+</body>
+</html>

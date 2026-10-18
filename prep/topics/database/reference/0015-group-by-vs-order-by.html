@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Шпаргалка: GROUP BY и ORDER BY</title>
+<link rel="stylesheet" href="../../../assets/style.css">
+</head>
+<body>
+<div class="page">
+  <p class="kicker">Database · SQL · Шпаргалка</p>
+  <h1>GROUP BY и ORDER BY — шпаргалка</h1>
+  <p><b>Суть:</b> меняется число строк — <code>GROUP BY</code> (схлопывает в группы). Не меняется, только порядок — <code>ORDER BY</code>. <code>GROUP BY</code> порядок <b>не гарантирует</b>.</p>
+
+  <h2>Сравнение</h2>
+  <table>
+    <tr><th></th><th>GROUP BY</th><th>ORDER BY</th></tr>
+    <tr><td>Строк</td><td>одна на группу</td><td>столько же</td></tr>
+    <tr><td>Зачем</td><td>агрегаты по группе</td><td>порядок, топ-N, пагинация</td></tr>
+    <tr><td>В <code>SELECT</code></td><td>колонки группировки + агрегаты (или всё при группировке по PK)</td><td>что угодно</td></tr>
+    <tr><td>Алиасы из <code>SELECT</code></td><td>по стандарту нет (PostgreSQL разрешает)</td><td>да</td></tr>
+  </table>
+
+  <h2>Порядок выполнения</h2>
+  <p><code>FROM</code> → <code>WHERE</code> → <code>GROUP BY</code> → <code>HAVING</code> → <code>SELECT</code> → <code>DISTINCT</code> → <code>ORDER BY</code> → <code>LIMIT</code></p>
+  <ul>
+    <li><code>WHERE</code> — фильтр строк, агрегатов и алиасов ещё нет.</li>
+    <li><code>HAVING</code> — фильтр групп, агрегаты есть.</li>
+    <li><code>ORDER BY</code> — алиасы есть; после <code>GROUP BY</code> только группируемые колонки и агрегаты.</li>
+  </ul>
+
+  <h2>Шаблоны</h2>
+  <pre><code>-- топ-N
+SELECT customer, sum(amount) AS total
+FROM sales GROUP BY customer
+HAVING sum(amount) &gt; 2000
+ORDER BY total DESC LIMIT 2;
+
+-- стабильная пагинация
+ORDER BY created_at, id
+
+-- NULL явно
+ORDER BY category NULLS LAST</code></pre>
+
+  <h2>Ловушки</h2>
+  <ul>
+    <li>«GROUP BY сортирует» — нет (миф из MySQL 5.x). В плане <code>HashAggregate</code> — порядок любой.</li>
+    <li><code>column must appear in the GROUP BY clause</code> — колонка не в группировке и не в агрегате.</li>
+    <li>Агрегат в <code>WHERE</code> — ошибка, нужен <code>HAVING</code>.</li>
+    <li>Одинаковые значения в <code>ORDER BY</code> — порядок между ними не определён → тай-брейк <code>id</code>.</li>
+    <li><code>NULL</code>: в <code>GROUP BY</code> одна группа; в <code>ORDER BY</code> PostgreSQL считает их наибольшими (в конце при <code>ASC</code>).</li>
+    <li>В Go результат в слайс, не в <code>map</code> — иначе порядок пропадёт.</li>
+  </ul>
+
+  <div class="callout">
+    Формулировка для собеса: «<code>GROUP BY</code> схлопывает строки в группы ради агрегатов, в <code>SELECT</code> — только колонки группировки и агрегаты. <code>ORDER BY</code> число строк не меняет, выполняется почти последним, поэтому видит алиасы. <code>GROUP BY</code> порядок не гарантирует — нужен <code>ORDER BY</code>, для пагинации с уникальным тай-брейком. Строки фильтрует <code>WHERE</code>, группы — <code>HAVING</code>.»
+  </div>
+
+  <p class="source-rec">Источники: <code>InterviewPro/docs/questions/database/topic_02_queries_aggregations.md</code>; <a href="https://www.postgresql.org/docs/current/queries-table-expressions.html">PostgreSQL — Table Expressions</a>; <a href="https://www.postgresql.org/docs/current/queries-order.html">PostgreSQL — Sorting Rows</a>.</p>
+
+  <div class="nav-links">
+    <a href="../lessons/0015-group-by-vs-order-by.html">← К уроку</a>
+    <a href="../labs/0015-group-by-order-by.html">Практика →</a>
+  </div>
+</div>
+</body>
+</html>
