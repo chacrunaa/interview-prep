@@ -116,3 +116,7 @@
 - 2026-10-06 (hirify scan): `applications.list` и `hidden.list` вызываются только напрямую по id через `hirify_invoke_capability`; `hirify_discover_capabilities` по запросу "applications list" вернул пустой список. Если discover снова пуст - вызывать по id, не считать отсутствием capability.
 - 2026-10-06 (hirify scan): лимит reveal в `hirify_me` сейчас 200 (apply 200), а в CANON и CLAUDE.md записано 100. Что верно - проверять по `hirify_me` перед откликом, сам канон не менять без решения пользователя.
 - 2026-10-06 (hirify scan): одна компания публикует несколько вакансий одной командой (Customer.io x2, ClickHouse x2, TeamSnap x2, G2i x2). Дубль по компании повторяет одну и ту же историю отклика, поэтому в шортлист берём одну версию, остальные отмечаем в scan.md.
+- 2026-10-19 - hh: в CANON-резюме места работы названы Wildberries / Газпром / Syndicate Group, а `answers.txt`
+  собираются по `me/facts.md` (Carprice / Nedra Digital / Syndicate Group). Расхождение повторяется третий прогон
+  `answers` подряд (citydrive x2, ff): рекрутер видит в ответах не те компании, что в резюме. Решить, какой маппинг
+  слотов действует для hh.

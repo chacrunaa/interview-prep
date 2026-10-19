@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Калькулятор нагрузки WhatsApp</title>
+<link rel="stylesheet" href="../../assets/style.css">
+<style>
+  .page { max-width: 1120px; }
+  .tabs { display: flex; gap: .5rem; margin: 1.5rem 0 1rem; flex-wrap: wrap; }
+  .tabs button, .presets button, .mode label {
+    font-family: var(--mono); font-size: .8rem; cursor: pointer;
+    background: var(--bg-card); color: var(--text);
+    border: 1px solid var(--rule); border-radius: 6px; padding: .45rem .8rem;
+  }
+  .tabs button.on, .presets button.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  .presets { display: flex; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 1rem; }
+  .mode { display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .mode input { margin-right: .35rem; }
+  .summary {
+    background: var(--bg-card); border: 1px solid var(--rule); border-left: 4px solid var(--accent);
+    border-radius: 6px; padding: .9rem 1.1rem; margin: 1rem 0 1.4rem; font-size: 1rem;
+  }
+  .calc { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; align-items: start; }
+  @media (max-width: 860px) { .calc { grid-template-columns: 1fr; } }
+  .inputs { position: sticky; top: .8rem; max-height: calc(100vh - 1.6rem); overflow-y: auto; padding-right: .3rem; }
+  @media (max-width: 860px) { .inputs { position: static; max-height: none; } }
+  fieldset { border: 1px solid var(--rule); border-radius: 6px; margin: 0 0 .8rem; padding: .5rem .8rem .7rem; background: var(--bg-card); }
+  legend { font-family: var(--mono); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: var(--accent); padding: 0 .3rem; }
+  .field { display: grid; grid-template-columns: 1fr 96px; gap: .2rem .5rem; align-items: center; margin: .35rem 0; }
+  .field label { font-size: .82rem; line-height: 1.25; }
+  .field input { font-family: var(--mono); font-size: .82rem; padding: .25rem .35rem; border: 1px solid var(--rule); border-radius: 4px; background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; }
+  .field .hint { grid-column: 1 / -1; font-size: .7rem; color: var(--text-muted); line-height: 1.3; margin-top: -.1rem; }
+  .field.off { opacity: .45; }
+  .layer { background: var(--bg-card); border: 1px solid var(--rule); border-radius: 6px; padding: .8rem 1rem .4rem; margin-bottom: 1rem; }
+  .layer h3 { margin: 0 0 .4rem; font-size: 1rem; }
+  .layer h3 .n { font-family: var(--mono); color: var(--accent); margin-right: .4rem; }
+  .layer table { margin: .2rem 0 .6rem; font-size: .84rem; }
+  .layer td { padding: .32rem .5rem; vertical-align: top; }
+  .layer td.v { font-family: var(--mono); white-space: nowrap; font-weight: 600; text-align: right; }
+  .layer td.f { font-family: var(--mono); font-size: .72rem; color: var(--text-muted); }
+  .layer .note { font-size: .8rem; color: var(--text-muted); margin: .2rem 0 .6rem; }
+  .warn { color: var(--bad); }
+  .ok { color: var(--good); }
+  .legend-box {
+    background: var(--accent-soft); border-radius: 6px; padding: .8rem 1rem; margin: 1rem 0 1.4rem; font-size: .95rem;
+  }
+  .legend-box::before { content: "легенда · как у меня было"; display: block; font-family: var(--mono); font-size: .68rem; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); margin-bottom: .3rem; }
+  .sol b[data-v], .sol span[data-v] { font-family: var(--mono); font-size: .9em; color: var(--accent); }
+  svg.hld { width: 100%; height: auto; margin: 1rem 0; }
+  svg.hld .box { fill: var(--bg-card); stroke: var(--rule); stroke-width: 1.5; }
+  svg.hld .box.hot { stroke: var(--accent); }
+  svg.hld .box.store { fill: var(--code-bg); }
+  svg.hld text { fill: var(--text); font-family: var(--mono); font-size: 12px; }
+  svg.hld text.sub { fill: var(--text-muted); font-size: 10px; }
+  svg.hld .ar { stroke: var(--text-muted); stroke-width: 1.3; fill: none; marker-end: url(#arr); }
+  svg.hld .ar.async { stroke-dasharray: 5 4; }
+  svg.hld #arr path { fill: var(--text-muted); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <p class="kicker">System Design · ДЗ 0 · Расчет нагрузки</p>
+  <h1>WhatsApp: калькулятор нагрузки и решение ДЗ 0</h1>
+  <p class="lede">Меняешь вход слева, справа пересчитываются все уровни: gateway, сервисы, кеш, база с кешем и без, диски. Во вкладке «Решение» тот же расчет подставлен в текст ДЗ.</p>
+  <p class="sidenote">Методика по курсу: RPS = DAU × действий / 86 400, трафик = RPS(write) × размер, capacity = год × 2, с репликацией = бэкапы + capacity × N, дисков = capacity / размер диска (<code>ns4</code>, слайд 22). Ориентиры железа: ~1000 RPS на ядро для легких операций (<code>05-transcript</code>, 02:14), Postgres 1-2к RPS на инстанс (<code>ns4</code>), HDD 250 МБ/с, SSD 650 МБ/с (<code>ns0</code>). Это прикидка на коленке, а не замер, на собесе так и говори.</p>
+
+  <div class="tabs">
+    <button data-tab="calc" class="on">Калькулятор</button>
+    <button data-tab="sol">Решение ДЗ 0</button>
+  </div>
+
+  <!-- ===================== КАЛЬКУЛЯТОР ===================== -->
+  <section id="tab-calc">
+    <div class="presets" id="presets"></div>
+    <div class="mode">
+      <label><input type="radio" name="mode" value="fwd" checked>DAU → RPS</label>
+      <label><input type="radio" name="mode" value="rev">RPS → DAU (обратный)</label>
+    </div>
+    <div class="summary" id="summary"></div>
+
+    <div class="calc">
+      <div class="inputs" id="inputs"></div>
+      <div id="layers"></div>
+    </div>
+  </section>
+
+  <!-- ===================== РЕШЕНИЕ ===================== -->
+  <section id="tab-sol" class="sol" hidden>
+
+    <p class="callout">Цифры в тексте берутся из калькулятора. Для чистого решения нажми пресет «ДЗ 0» во вкладке «Калькулятор». Сейчас посчитано для <b data-v="dau"></b> DAU.</p>
+
+    <h2>1. Требования</h2>
+    <h3>Функциональные</h3>
+    <ul>
+      <li>Личные сообщения и групповые чаты, только текст (до 2000 символов) и картинки (до 3 штук по 1 МБ).</li>
+      <li>Счетчик непрочитанных по каждому чату.</li>
+      <li>Статус онлайн/оффлайн и «был в сети».</li>
+      <li>Push, если получателя нет в сети.</li>
+      <li>Кросс-девайс синк: прочитал на телефоне - на ноутбуке тоже прочитано.</li>
+      <li>Клиенты: мобильные, десктоп, веб.</li>
+    </ul>
+    <h3>Нефункциональные</h3>
+    <ul>
+      <li><b data-v="dau"></b> DAU, 10 отправок и 20 просмотров на юзера в день, пользователи по всему миру, сезонности нет.</li>
+      <li>Доступность 99.95%: <b data-v="downYear"></b> простоя в год, <b data-v="downMonth"></b> в месяц.</li>
+      <li>Доставка до онлайн-получателя за 3 с, это и есть главное требование по latency.</li>
+      <li>Порядок сообщений внутри чата сохраняется, сообщение не теряется после того как сервер ответил «принято».</li>
+    </ul>
+    <h3>Допущения</h3>
+    <ul>
+      <li>Фронт и аутентификацию не проектирую: на входе уже есть проверенный user_id.</li>
+      <li>Средняя длина текста <b data-v="avgChars"></b> символов, а не 2000: потолок нужен для валидации, для объема берем среднее. Доля групп <b data-v="gShare"></b>, средняя группа <b data-v="gSize"></b> человек, у юзера в среднем <b data-v="devices"></b> устройства.</li>
+      <li>Картинки клиент жмет перед отправкой, средняя <b data-v="imgKB"></b>, на сервере храним <b data-v="imgDays"></b> дней (как WhatsApp: после доставки медиа живет на устройстве).</li>
+      <li>Пик = <b data-v="peak"></b> от среднего: система глобальная, суточная волна по часовым поясам частично сглаживается, но вечерний пик в крупных регионах никуда не девается.</li>
+    </ul>
+
+    <h2>2. Расчет нагрузки и памяти</h2>
+    <table>
+      <tr><th>Операция</th><th>RPS среднее</th><th>RPS пик</th><th>Как считал</th></tr>
+      <tr><td>Отправка сообщения</td><td><b data-v="sendAvg"></b></td><td><b data-v="sendPeak"></b></td><td>DAU × 10 / 86 400</td></tr>
+      <tr><td>Просмотр (открыл чат, подгрузил историю)</td><td><b data-v="viewAvg"></b></td><td><b data-v="viewPeak"></b></td><td>DAU × 20 / 86 400</td></tr>
+      <tr><td>Отметка «прочитано»</td><td><b data-v="viewAvg"></b></td><td><b data-v="viewPeak"></b></td><td>одна на просмотр</td></tr>
+      <tr><td>Heartbeat онлайн-статуса</td><td><b data-v="presAvg"></b></td><td><b data-v="presPeak"></b></td><td>соединений онлайн / интервал</td></tr>
+      <tr><td>Доставка в сокеты (fan-out)</td><td><b data-v="delivAvg"></b></td><td><b data-v="delivPeak"></b></td><td>отправки × получателей × устройств</td></tr>
+      <tr><td>Push</td><td><b data-v="pushAvg"></b></td><td><b data-v="pushPeak"></b></td><td>отправки × получателей × доля оффлайн</td></tr>
+    </table>
+    <p>Главный вывод из таблицы: самая большая цифра не отправка, а <b>heartbeat</b> и <b>fan-out доставки</b>. Отправка <b data-v="sendAvg"></b> RPS, а в сокеты уходит <b data-v="delivAvg"></b> событий в секунду, потому что одно сообщение в группу размножается на всех участников и все их устройства. Поэтому heartbeat я не гоняю как запросы в сервис: gateway сам обновляет TTL ключа в Redis, а событие «стал онлайн/оффлайн» рассылает только при смене статуса.</p>
+    <table>
+      <tr><th>Память и объем</th><th>Значение</th><th>Как считал</th></tr>
+      <tr><td>Одно сообщение</td><td><b data-v="msgSize"></b></td><td>символы × 2 байта (UTF-8, кириллица) + метаданные</td></tr>
+      <tr><td>Текст в сутки / в год</td><td><b data-v="textDay"></b> / <b data-v="textYear"></b></td><td>отправок в сутки × размер × индексы</td></tr>
+      <tr><td>Хранилище текста на <b data-v="years"></b> лет</td><td><b data-v="capRepl"></b></td><td>год × лет × 2 запас, × <b data-v="repl"></b> реплики + бэкап</td></tr>
+      <tr><td>Дисков под текст</td><td><b data-v="disks"></b></td><td>capacity / <b data-v="diskTB"></b> на диск</td></tr>
+      <tr><td>Картинки: входящий поток / CDN наружу</td><td><b data-v="imgIn"></b> / <b data-v="imgOut"></b></td><td>отправки × доля с картинкой × штук × размер</td></tr>
+      <tr><td>Картинки на сервере</td><td><b data-v="imgStore"></b></td><td>поток в сутки × <b data-v="imgDays"></b> дней × репликация</td></tr>
+      <tr><td>Соединений WebSocket в пик</td><td><b data-v="connsPeak"></b></td><td>DAU × доля онлайн × устройств × пик</td></tr>
+      <tr><td>RAM gateway под соединения</td><td><b data-v="gwRam"></b></td><td>соединений × <b data-v="connKB"></b> на соединение</td></tr>
+      <tr><td>RAM Redis (горячее окно, presence, роутинг)</td><td><b data-v="cacheRam"></b></td><td>см. уровень 3 калькулятора</td></tr>
+    </table>
+    <p>Картинки в разы тяжелее текста: <b data-v="imgIn"></b> входящего потока против <b data-v="textIn"></b> текста. Значит, картинки идут мимо сервисов сообщений: клиент получает presigned URL и грузит прямо в объектное хранилище, а в сообщении лежит только ссылка. Отдача через CDN.</p>
+
+    <div class="legend-box">в газпроме у нас на входе было в среднем 3-4к RPS, а в пик доходило до 7к, так что я всегда сначала разделяю среднее и пик и считаю железо под пик с запасом, а не под среднее. Там пик был где-то в 2 раза от среднего, а тут система на весь мир, волна по часовым поясам сглаживается, но я все равно закладываю 3x, потому что недосчитать пик дороже чем переплатить за пару серверов</div>
+
+    <h2>3. Модель данных</h2>
+    <table>
+      <tr><th>Сущность</th><th>Поля</th><th>Где живет и почему</th></tr>
+      <tr><td><b>users</b></td><td>user_id, phone, name, avatar_url, created_at</td><td>Postgres, шард по user_id. Меняется редко, нужны уникальность телефона и транзакции.</td></tr>
+      <tr><td><b>devices</b></td><td>device_id, user_id, platform, push_token, last_seen_at</td><td>Postgres рядом с users. push_token нужен push-сервису.</td></tr>
+      <tr><td><b>chats</b></td><td>chat_id, type (direct / group), title, created_at, last_message_id</td><td>Postgres, шард по chat_id.</td></tr>
+      <tr><td><b>chat_members</b></td><td>chat_id, user_id, role, last_read_message_id, last_delivered_message_id, muted</td><td>Postgres, шард по chat_id, плюс обратный индекс user_id → chat_id для списка чатов. Непрочитанные = last_message_id - last_read_message_id, ничего не храним на каждое сообщение.</td></tr>
+      <tr><td><b>messages</b></td><td>chat_id (partition key), message_id (snowflake, clustering key, по убыванию), sender_id, text, media_keys[], client_msg_id, created_at</td><td>Cassandra / ScyllaDB. Запись <b data-v="dbWritePeak"></b> в пик и чтение «последние N сообщений чата» ложатся в wide-column идеально: одна партиция = один чат, сортировка уже на диске.</td></tr>
+      <tr><td><b>media</b></td><td>media_key, owner_id, size, mime, expires_at</td><td>Метаданные в Postgres, сами файлы в S3-совместимом хранилище.</td></tr>
+      <tr><td><b>presence</b></td><td>user_id → online, last_seen_at</td><td>Redis с TTL: протух ключ = оффлайн, last_seen пишется при отключении.</td></tr>
+      <tr><td><b>sessions</b></td><td>user_id → [device_id → gateway_id]</td><td>Redis: куда отдавать событие, на каком gateway висит сокет устройства.</td></tr>
+    </table>
+    <p>Статусы «доставлено» и «прочитано» храню не на каждое сообщение, а указателем в chat_members: отметка «прочитано» двигает last_read_message_id и сразу закрывает все сообщения до него. Иначе квитанций было бы в <b data-v="recip"></b> раза больше, чем сообщений. message_id - snowflake (время + номер узла + счетчик): по нему сортируем внутри чата и пагинируем курсором. client_msg_id нужен для идемпотентности: клиент переотправил после обрыва связи - дубля не будет.</p>
+
+    <h2>4. API</h2>
+    <table>
+      <tr><th>Операция</th><th>Что делает</th></tr>
+      <tr><td><code>sendMessage(chat_id, client_msg_id, text, media_keys)</code></td><td>Пишет в messages, возвращает message_id. Идемпотентна по client_msg_id.</td></tr>
+      <tr><td><code>getHistory(chat_id, before_message_id, limit)</code></td><td>Страница истории курсором, без OFFSET.</td></tr>
+      <tr><td><code>getChats(cursor)</code></td><td>Список чатов с последним сообщением и числом непрочитанных.</td></tr>
+      <tr><td><code>markRead(chat_id, message_id)</code></td><td>Двигает last_read, рассылает событие на другие устройства юзера и отправителю.</td></tr>
+      <tr><td><code>getUploadUrl(mime, size)</code></td><td>Presigned URL в объектное хранилище, проверка размера до 1 МБ.</td></tr>
+      <tr><td><code>getPresence(user_ids[])</code></td><td>Онлайн и last_seen пачкой для экрана списка чатов.</td></tr>
+      <tr><td><code>subscribe()</code> (WebSocket)</td><td>Одно соединение на устройство. Сервер шлет: new_message, read, delivered, presence_changed, typing. Клиент шлет ack на каждое событие.</td></tr>
+      <tr><td><code>syncSince(last_event_id)</code></td><td>Догнать пропущенное после переподключения или когда открыл второе устройство.</td></tr>
+    </table>
+
+    <h2>5. Верхнеуровневая схема</h2>
+    <svg class="hld" viewBox="0 0 960 520" role="img" aria-label="Схема компонентов WhatsApp">
+      <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z"/></marker></defs>
+      <!-- клиенты -->
+      <rect class="box" x="10" y="200" width="120" height="70" rx="6"/>
+      <text x="70" y="230" text-anchor="middle">Клиенты</text>
+      <text class="sub" x="70" y="248" text-anchor="middle">mobile, desktop, web</text>
+      <!-- geo / lb -->
+      <rect class="box" x="170" y="200" width="120" height="70" rx="6"/>
+      <text x="230" y="230" text-anchor="middle">GeoDNS + L4 LB</text>
+      <text class="sub" x="230" y="248" text-anchor="middle">ближайший регион</text>
+      <!-- gateway -->
+      <rect class="box hot" x="330" y="190" width="140" height="90" rx="6"/>
+      <text x="400" y="222" text-anchor="middle">WS Gateway</text>
+      <text class="sub" x="400" y="240" text-anchor="middle">сокеты, rate limit</text>
+      <text class="sub" x="400" y="256" text-anchor="middle" data-v="gwInst">-</text>
+      <!-- сервисы -->
+      <rect class="box" x="520" y="40" width="150" height="56" rx="6"/>
+      <text x="595" y="64" text-anchor="middle">Message svc</text>
+      <text class="sub" x="595" y="82" text-anchor="middle">запись, идемпотентность</text>
+      <rect class="box" x="520" y="120" width="150" height="56" rx="6"/>
+      <text x="595" y="144" text-anchor="middle">Chat / History svc</text>
+      <text class="sub" x="595" y="162" text-anchor="middle">история, непрочитанные</text>
+      <rect class="box" x="520" y="200" width="150" height="56" rx="6"/>
+      <text x="595" y="224" text-anchor="middle">Presence svc</text>
+      <text class="sub" x="595" y="242" text-anchor="middle">онлайн, last seen</text>
+      <rect class="box" x="520" y="280" width="150" height="56" rx="6"/>
+      <text x="595" y="304" text-anchor="middle">Media svc</text>
+      <text class="sub" x="595" y="322" text-anchor="middle">presigned URL</text>
+      <!-- kafka -->
+      <rect class="box hot" x="520" y="380" width="150" height="56" rx="6"/>
+      <text x="595" y="404" text-anchor="middle">Kafka</text>
+      <text class="sub" x="595" y="422" text-anchor="middle">ключ = chat_id</text>
+      <!-- delivery / push -->
+      <rect class="box hot" x="330" y="380" width="140" height="56" rx="6"/>
+      <text x="400" y="404" text-anchor="middle">Delivery / Fan-out</text>
+      <text class="sub" x="400" y="422" text-anchor="middle">кому и на какой gateway</text>
+      <rect class="box" x="170" y="380" width="120" height="56" rx="6"/>
+      <text x="230" y="404" text-anchor="middle">Push svc</text>
+      <text class="sub" x="230" y="422" text-anchor="middle">APNs / FCM</text>
+      <!-- хранилища -->
+      <rect class="box store" x="720" y="40" width="225" height="56" rx="6"/>
+      <text x="832" y="64" text-anchor="middle">Cassandra: messages</text>
+      <text class="sub" x="832" y="82" text-anchor="middle">partition = chat_id, RF = 3</text>
+      <rect class="box store" x="720" y="120" width="225" height="56" rx="6"/>
+      <text x="832" y="144" text-anchor="middle">Postgres: users, chats, members</text>
+      <text class="sub" x="832" y="162" text-anchor="middle">шарды + реплики</text>
+      <rect class="box store" x="720" y="200" width="225" height="56" rx="6"/>
+      <text x="832" y="224" text-anchor="middle">Redis</text>
+      <text class="sub" x="832" y="242" text-anchor="middle">presence, sessions, горячее окно</text>
+      <rect class="box store" x="720" y="280" width="225" height="56" rx="6"/>
+      <text x="832" y="304" text-anchor="middle">S3 + CDN</text>
+      <text class="sub" x="832" y="322" text-anchor="middle">картинки, TTL</text>
+      <!-- стрелки -->
+      <path class="ar" d="M130,235 L168,235"/>
+      <path class="ar" d="M290,235 L328,235"/>
+      <path class="ar" d="M470,215 C495,215 495,68 518,68"/>
+      <path class="ar" d="M470,225 C495,225 495,148 518,148"/>
+      <path class="ar" d="M470,235 L518,228"/>
+      <path class="ar" d="M470,250 C495,250 495,308 518,308"/>
+      <path class="ar" d="M670,68 L718,68"/>
+      <path class="ar" d="M670,148 L718,148"/>
+      <path class="ar" d="M670,152 C700,152 700,215 718,220"/>
+      <path class="ar" d="M670,228 L718,228"/>
+      <path class="ar" d="M670,308 L718,308"/>
+      <path class="ar async" d="M600,96 C640,200 640,330 600,378"/>
+      <path class="ar async" d="M520,408 L472,408"/>
+      <path class="ar" d="M400,380 L400,282"/>
+      <path class="ar async" d="M330,408 L292,408"/>
+      <path class="ar" d="M440,436 C600,500 820,480 832,338"/>
+      <path class="ar" d="M70,270 C70,330 80,470 160,470 L700,470 C760,470 800,420 820,338" stroke-dasharray="2 3"/>
+      <text class="sub" x="340" y="500">клиент грузит картинку напрямую в S3 по presigned URL, отдача через CDN</text>
+      <text class="sub" x="455" y="458">роутинг: user → gateway</text>
+    </svg>
+    <p><b>Путь сообщения.</b> Клиент шлет sendMessage по сокету → gateway → Message svc пишет в Cassandra (кворум, сообщение не потеряется) и отвечает «принято» с message_id → то же событие уходит в Kafka с ключом chat_id, поэтому порядок внутри чата сохраняется → Delivery берет участников чата, смотрит в Redis на каком gateway висит каждое устройство, отдает в сокет, а для оффлайн-устройств отдает в Push svc. Kafka держит пик: если доставка отстает, сообщение уже сохранено и дойдет, просто позже.</p>
+    <p><b>Регионы.</b> Юзер пишет в домашний регион, сокет держит ближайший. Между регионами gateway пересылают события через межрегиональную шину, задержка 50-150 мс укладывается в бюджет 3 с. Каждый регион: минимум 3 зоны доступности, сервисы stateless, Cassandra и Kafka с RF = 3, без этого 99.95% не собрать.</p>
+
+    <div class="legend-box">трафик у нас заходил через ингресс в гейтвей на го, там была проверка токена, rate limit на юзера и роутинг по сервисам, и гейтвей был stateless, так что на пике просто докидывали поды через HPA по CPU. На 7к пика хватало 6 подов по 2 ядра, держали загрузку в районе 60-70%, а не под сотку, потому что под сотку p99 сразу уезжает</div>
+
+    <h3>Кеш</h3>
+    <p>В Redis держу три вещи: presence с TTL, сессии (user → gateway) и горячее окно чатов: последние <b data-v="hotMsgs"></b> сообщений для активных за сутки чатов. Это <b data-v="cacheRam"></b> RAM и <b data-v="redisNodes"></b> узлов с репликами. С hit ratio <b data-v="hit"></b> чтение истории в базу падает с <b data-v="dbReadNoPeak"></b> до <b data-v="dbReadCachePeak"></b> RPS в пик. Запись идет в базу, а в кеш сообщение дописывается после успешной записи (write-through в окно), так что свежие сообщения всегда в кеше и большая часть чтений туда попадает.</p>
+
+    <div class="legend-box">горячее читали из редиса, hit ratio был где-то 90%, так что из 7к пика в базу на чтение доходило меньше 1к, и один мастер с двумя репликами это спокойно держал. Инвалидацию делали на записи: удаляли ключ после коммита, а не обновляли, чтобы не ловить гонку двух писателей</div>
+
+    <h3>База</h3>
+    <p>Если бы сообщения лежали в Postgres, на запись в пик нужно <b data-v="pgShardsCache"></b> шардов по 1-2к RPS, и это упирается именно в запись, а не в чтение, так что кеш тут шарды не экономит. Поэтому сообщения в Cassandra: <b data-v="cassNodes"></b> узлов, запись в LSM-дерево дешевая, шардирование по chat_id из коробки. Postgres оставляю для пользователей, чатов и участников: там мало записи и нужны транзакции.</p>
+
+    <div class="legend-box">первыми на пике упирались не в CPU базы, а в коннекты: у каждого пода свой пул, и когда HPA накидывал подов, коннектов становилось больше чем max_connections. Поставили pgbouncer в transaction режиме и зажали пул на под, после этого база на пике держалась ровно</div>
+
+    <h2>6. Узкие места и компромиссы</h2>
+    <ul>
+      <li><b>Большие группы.</b> Fan-out на записи: одно сообщение в группу на 1000 человек = 1000 доставок. Для групп больше порога (скажем 500) не размножаю, а шлю «в чате новое», клиент сам дочитывает историю.</li>
+      <li><b>Горячий чат.</b> Одна партиция Cassandra = один чат, огромная группа может перегреть узел. Решение: бакет по времени в partition key (chat_id + месяц), заодно партиции не растут бесконечно.</li>
+      <li><b>Порядок.</b> Гарантирую порядок только внутри чата: Kafka по ключу chat_id + snowflake id. Глобальный порядок не нужен и стоил бы дорого.</li>
+      <li><b>3 секунды.</b> Бюджет: сеть до региона ~150 мс + запись с кворумом ~10 мс + Kafka ~50 мс + доставка в сокет ~150 мс. Запас большой, проблема только в отставании консьюмеров, поэтому алерт на consumer lag.</li>
+      <li><b>Кросс-девайс.</b> Каждое событие (new_message, read) идет на все устройства юзера, а не только на одно. После переподключения syncSince догоняет пропущенное по last_event_id.</li>
+      <li><b>Heartbeat.</b> <b data-v="presAvg"></b> heartbeat в секунду - это больше, чем все остальное вместе. Gateway сам продлевает TTL в Redis пачками, а наружу рассылаем только смену статуса и только тем, у кого открыт этот чат.</li>
+    </ul>
+
+    <div class="legend-box">все, что не нужно отдать юзеру сразу, у нас уходило в кафку, а консьюмеры писали в базу пачками, так что пик на запись размазывался по времени, и лаг консьюмера на пике был секунды, а не минуты. Тут ровно та же история с доставкой: сохранили, ответили клиенту и дальше разносим асинхронно</div>
+
+    <p class="sidenote">Блоки «легенда» - заготовки ответа от первого лица, опора: <code>me/versions/legend.md</code> (3-4к RPS в среднем, пик 7к). Пресет «Легенда 7к» в калькуляторе пересчитывает эти цифры: 7к пика на входе = 10 ядер при 70% загрузке, то есть 5-6 подов по 2 ядра, а чтение в базу при 90% hit ratio меньше 1к. Остальное в пресете - это профиль мессенджера, а не газпромовского сервиса. Непонятное в расчете можно спросить у меня.</p>
+  </section>
+
+</div>
+
+<script>
+(() => {
+  const S = 86400;
+
+  // ---------- поля ----------
+  const FIELDS = [
+    ['Нагрузка', [
+      ['dau', 'DAU, уникальных в день', 200e6, 'по ДЗ 200 млн'],
+      ['target', 'Целевой RPS на входе, среднее', 3500, 'только в обратном режиме: из него считается DAU', 'rev'],
+      ['sends', 'Отправок на юзера в день', 10, 'по ДЗ 10'],
+      ['views', 'Просмотров на юзера в день', 20, 'по ДЗ 20, каждый просмотр = загрузка истории + markRead'],
+      ['peak', 'Пик / среднее', 3, 'глобально 2-3x, локальный сервис 3-5x'],
+    ]],
+    ['Соединения и онлайн', [
+      ['online', 'Доля DAU онлайн одновременно', 0.1, 'в среднем 5-15% DAU держат сокет'],
+      ['devices', 'Устройств на юзера', 1.5, 'телефон + иногда десктоп/веб'],
+      ['hb', 'Heartbeat, раз в N секунд (0 = нет)', 30, 'presence: продление TTL'],
+      ['presView', 'Статусов на один просмотр', 10, 'getPresence пачкой на экран списка чатов'],
+      ['pushShare', 'Доля получателей оффлайн (push)', 0.4, ''],
+    ]],
+    ['Сообщение', [
+      ['avgChars', 'Средняя длина, символов', 120, 'максимум 2000, для объема берем среднее'],
+      ['bpc', 'Байт на символ', 2, 'UTF-8: латиница 1, кириллица 2, эмодзи 4'],
+      ['meta', 'Метаданные, байт', 200, 'id, chat_id, sender, время, client_msg_id'],
+      ['g', 'Доля сообщений в группы', 0.2, ''],
+      ['gsize', 'Средний размер группы', 30, ''],
+      ['ackBatch', 'Схлопывание квитанций', 5, 'указатель last_read двигается пачкой, не на каждое сообщение'],
+    ]],
+    ['Картинки', [
+      ['imgShare', 'Доля сообщений с картинкой', 0.1, ''],
+      ['imgPer', 'Картинок в таком сообщении', 1.5, 'максимум 3'],
+      ['imgKB', 'Средний размер, КБ', 400, 'максимум 1 МБ, клиент жмет'],
+      ['imgDays', 'Хранить на сервере, дней', 30, 'потом только на устройстве'],
+    ]],
+    ['Кеш', [
+      ['hit', 'Hit ratio чтения истории', 0.9, '0 = кеша нет'],
+      ['activeChats', 'Активных чатов на юзера в сутки', 5, ''],
+      ['hotMsgs', 'Сообщений в горячем окне чата', 50, 'первая страница истории'],
+      ['redisOver', 'Оверхед Redis на структуры', 1.5, ''],
+      ['redisOps', 'Redis ops/с на узел', 100000, ''],
+      ['redisRam', 'RAM на узел Redis, ГБ', 64, ''],
+    ]],
+    ['Сервисы и gateway', [
+      ['rpc', 'RPS на ядро', 1000, 'курс: легкие операции, IO не блокирует'],
+      ['util', 'Целевая загрузка CPU', 0.7, 'держим 60-70%, иначе уезжает p99'],
+      ['cores', 'Ядер на инстанс', 4, ''],
+      ['svcRam', 'RAM на инстанс, ГБ', 4, 'курс: пара гигов на сервис'],
+      ['connKB', 'RAM на WS-соединение, КБ', 20, 'буферы + горутины'],
+      ['connsPerGw', 'Соединений на gateway', 100000, 'потолок по fd и RAM'],
+      ['svcLat', 'Latency сервиса, мс', 30, 'для закона Литтла'],
+    ]],
+    ['База', [
+      ['pgRps', 'Postgres RPS на инстанс', 1500, 'курс: 1-2к'],
+      ['pgRepl', 'Реплик на шард', 2, ''],
+      ['cassOps', 'Cassandra ops/с на узел', 10000, 'запись дешевая, LSM'],
+      ['dbLat', 'Latency запроса в базу, мс', 5, ''],
+    ]],
+    ['Хранилище', [
+      ['idx', 'Оверхед индексов', 1.3, ''],
+      ['years', 'Горизонт, лет', 5, ''],
+      ['repl', 'Фактор репликации', 3, ''],
+      ['backup', 'Бэкапов (в объемах capacity)', 1, ''],
+      ['diskTB', 'Размер диска, ТБ', 8, ''],
+      ['hotDays', 'Горячее на SSD, дней', 30, 'старое охлаждаем на HDD'],
+      ['sla', 'SLA, %', 99.95, 'по ДЗ 4 ч 23 мин в год'],
+    ]],
+  ];
+  const DEF = {};
+  FIELDS.forEach(([, fs]) => fs.forEach(f => DEF[f[0]] = f[2]));
+
+  const PRESETS = {
+    'ДЗ 0 WhatsApp': { mode: 'fwd' },
+    'Лекция ns4: 2 сообщения, 10 чтений': { mode: 'fwd', sends: 2, views: 10, avgChars: 100 },
+    'Легенда 7к': { mode: 'rev', target: 3500, peak: 2, hb: 0, g: 0.2, pushShare: 0.4, imgShare: 0.1, cores: 2 },
+  };
+
+  // ---------- форматирование ----------
+  const dec = (x, d = 1) => {
+    const s = x.toFixed(d).replace('.', ',');
+    return s.replace(/,0+$/, '');
+  };
+  const N = x => {
+    if (!isFinite(x)) return '-';
+    const a = Math.abs(x);
+    if (a >= 1e9) return dec(x / 1e9) + ' млрд';
+    if (a >= 1e6) return dec(x / 1e6) + ' млн';
+    if (a >= 1e3) return dec(x / 1e3) + 'к';
+    if (a >= 10) return String(Math.round(x));
+    return dec(x, 2);
+  };
+  const B = x => {
+    if (!isFinite(x)) return '-';
+    const u = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ', 'ПБ', 'ЭБ'];
+    let i = 0;
+    while (Math.abs(x) >= 1000 && i < u.length - 1) { x /= 1000; i++; }
+    return dec(x, x >= 100 ? 0 : 1) + ' ' + u[i];
+  };
+  const BS = x => B(x) + '/с';
+  const P = x => dec(x * 100, 0) + '%';
+  const DUR = sec => {
+    const h = Math.floor(sec / 3600), m = Math.round((sec % 3600) / 60);
+    return h ? `${h} ч ${m} мин` : `${m} мин`;
+  };
+  const ceil = Math.ceil, max = Math.max;
+
+  // ---------- модель ----------
+  function compute(p, mode) {
+    const r = (1 - p.g) * 1 + p.g * (p.gsize - 1);          // получателей на сообщение
+    const m = (1 - p.g) * 2 + p.g * p.gsize;                // участников в среднем чате
+    const hbUser = p.hb > 0 ? p.online * p.devices / p.hb : 0; // heartbeat/с на одного DAU
+    const reqUser = (p.sends + 2 * p.views) / S + hbUser;   // входящих запросов/с на одного DAU
+    const dau = mode === 'rev' ? p.target / reqUser : p.dau;
+    const K = p.peak;
+
+    const send = dau * p.sends / S;
+    const view = dau * p.views / S;
+    const mark = view;
+    const pres = dau * hbUser;
+    const presRead = view * p.presView;
+    const gwIn = send + view + mark + pres;
+    const deliv = send * r * p.devices;
+    const receipts = send * r + mark;
+    const gwOut = deliv + receipts;
+    const push = send * r * p.pushShare;
+
+    // gateway
+    const conns = dau * p.online * p.devices;
+    const connsPeak = Math.min(conns * K, dau * p.devices);
+    const gwRam = connsPeak * p.connKB * 1e3;
+    const gwByConn = ceil(connsPeak / p.connsPerGw);
+    const gwByCpu = ceil((gwIn + gwOut) * K / (p.rpc * p.cores * p.util));
+    const gwInst = max(2, gwByConn, gwByCpu);
+    const inCores = gwIn * K / (p.rpc * p.util);           // ядер только под входящие запросы
+    const inPods = max(2, ceil(inCores / p.cores));
+
+    // сервисы
+    const svcList = [
+      ['Message svc', send, 'отправки'],
+      ['Chat / History svc', view + mark, 'просмотры + markRead'],
+      ['Presence svc', presRead, 'чтение статусов (heartbeat продлевает TTL сам gateway)'],
+      ['Delivery / Fan-out', deliv + receipts, 'доставки + квитанции'],
+      ['Push svc', push, 'push оффлайн-получателям'],
+    ].map(([name, avg, what]) => {
+      const peak = avg * K;
+      const coresNeed = peak / (p.rpc * p.util);
+      const inst = max(2, ceil(coresNeed / p.cores));
+      return { name, avg, peak, what, coresNeed, inst, ram: inst * p.svcRam * 1e9 };
+    });
+    const svcInst = svcList.reduce((a, s) => a + s.inst, 0);
+    const svcCores = svcInst * p.cores;
+
+    // кеш
+    const msgSize = p.avgChars * p.bpc + p.meta;
+    const hotChats = dau * p.activeChats / m;
+    const cacheWin = hotChats * p.hotMsgs * msgSize * p.redisOver;
+    const cachePres = dau * 100 * p.redisOver;
+    const cacheSess = connsPeak * 100 * p.redisOver;
+    const cacheRam = cacheWin + cachePres + cacheSess;
+    const cacheOps = (view + send + pres + presRead + deliv) * K;
+    const redisByRam = ceil(cacheRam / (p.redisRam * 1e9 * 0.7));
+    const redisByOps = ceil(cacheOps / (p.redisOps * p.util));
+    const redisShards = max(1, redisByRam, redisByOps);
+    const redisNodes = redisShards * 2;
+
+    // база
+    const dbWrite = send + receipts / p.ackBatch;
+    const dbReadNo = view;
+    const dbReadCache = view * (1 - p.hit);
+    const wP = dbWrite * K, rNoP = dbReadNo * K, rCP = dbReadCache * K;
+    const pgShards = rP => max(1, ceil(wP / p.pgRps), ceil(rP / (p.pgRps * (1 + p.pgRepl))));
+    const pgShardsNo = pgShards(rNoP), pgShardsCache = pgShards(rCP);
+    const cassNodes = max(3, ceil((wP * p.repl + rCP) / p.cassOps));
+    const inflightSvc = (gwIn) * K * p.svcLat / 1000;
+    const inflightDbNo = (wP + rNoP) * p.dbLat / 1000;
+    const inflightDbCache = (wP + rCP) * p.dbLat / 1000;
+
+    // хранилище
+    const textIn = send * msgSize;
+    const textDay = textIn * S * p.idx;
+    const textYear = textDay * 365;
+    const capInit = textYear * p.years * 2;
+    const capRepl = capInit * p.repl + capInit * p.backup;
+    const disks = ceil(capRepl / (p.diskTB * 1e12));
+    const ssd = Math.min(textDay * p.hotDays * p.repl, capRepl);
+    const hdd = capRepl - ssd;
+    const readTraffic = view * p.hotMsgs * msgSize;
+    const writePerShard = wP * msgSize / pgShardsCache;
+    const imgIn = send * p.imgShare * p.imgPer * p.imgKB * 1e3;
+    const imgOut = imgIn * r;
+    const imgStore = imgIn * S * p.imgDays * p.repl;
+
+    const downYear = (1 - p.sla / 100) * 365 * 24 * 3600;
+
+    return { p, mode, r, m, dau, K, send, view, mark, pres, presRead, gwIn, gwOut, deliv, receipts, push,
+      conns, connsPeak, gwRam, gwByConn, gwByCpu, gwInst, inCores, inPods, svcList, svcInst, svcCores,
+      msgSize, hotChats, cacheWin, cachePres, cacheSess, cacheRam, cacheOps, redisByRam, redisByOps, redisShards, redisNodes,
+      dbWrite, dbReadNo, dbReadCache, wP, rNoP, rCP, pgShardsNo, pgShardsCache, cassNodes, inflightSvc, inflightDbNo, inflightDbCache,
+      textIn, textDay, textYear, capInit, capRepl, disks, ssd, hdd, readTraffic, writePerShard, imgIn, imgOut, imgStore, downYear, reqUser };
+  }
+
+  // ---------- рендер ----------
+  const $ = s => document.querySelector(s);
+  const inputsEl = $('#inputs'), layersEl = $('#layers');
+  let mode = 'fwd';
+
+  function buildInputs() {
+    inputsEl.innerHTML = FIELDS.map(([title, fs]) => `
+      <fieldset><legend>${title}</legend>
+        ${fs.map(([id, label, def, hint, only]) => `
+          <div class="field" data-only="${only || ''}" data-id="${id}">
+            <label for="f-${id}">${label}</label>
+            <input id="f-${id}" type="number" step="any" value="${def}">
+            ${hint ? `<div class="hint">${hint}</div>` : ''}
+          </div>`).join('')}
+      </fieldset>`).join('');
+    inputsEl.addEventListener('input', render);
+  }
+  const read = () => {
+    const p = {};
+    Object.keys(DEF).forEach(k => { const v = parseFloat($('#f-' + k).value); p[k] = isFinite(v) ? v : DEF[k]; });
+    return p;
+  };
+  const row = (label, v, f, cls = '') => `<tr><td>${label}</td><td class="v ${cls}">${v}</td><td class="f">${f || ''}</td></tr>`;
+  const layer = (n, title, rows, note = '') =>
+    `<div class="layer"><h3><span class="n">${n}</span>${title}</h3><table>${rows.join('')}</table>${note ? `<p class="note">${note}</p>` : ''}</div>`;
+
+  function render() {
+    const p = read();
+    const c = compute(p, mode);
+    const K = c.K;
+
+    document.querySelectorAll('.field').forEach(el => {
+      const only = el.dataset.only, id = el.dataset.id;
+      el.classList.toggle('off', (only === 'rev' && mode !== 'rev') || (id === 'dau' && mode === 'rev'));
+    });
+
+    $('#summary').innerHTML = mode === 'rev'
+      ? `<b>${N(p.target)} RPS</b> на входе в среднем (<b>${N(p.target * K)}</b> в пик) при ${p.sends} отправках и ${p.views} просмотрах на юзера в день - это <b>${N(c.dau)} DAU</b>. Под входящие в пик: <b>${N(c.inCores)} ядер</b> = <b>${c.inPods} подов по ${p.cores}</b>. Ядер на все сервисы с fan-out: <b>${N(c.svcCores)}</b>, чтение в базу с кешем: <b>${N(c.rCP)} RPS</b> в пик.`
+      : `<b>${N(c.dau)} DAU</b> → отправка <b>${N(c.send)}</b> RPS в среднем / <b>${N(c.send * K)}</b> в пик, просмотры <b>${N(c.view)}</b> / <b>${N(c.view * K)}</b>, в сокеты уходит <b>${N(c.deliv * K)}</b> событий/с в пик. Текст <b>${B(c.textDay)}</b> в сутки, картинки <b>${BS(c.imgIn)}</b> входящего потока. База на запись: <b>${N(c.wP)}</b> RPS в пик.`;
+
+    const svcRows = c.svcList.map(s => row(s.name, `${s.inst} × ${p.cores} ядер`,
+      `${s.what}: ${N(s.avg)} → пик ${N(s.peak)} / (${p.rpc} × ${p.util}) = ${N(s.coresNeed)} ядер`));
+
+    const pgNote = c.pgShardsCache > 50
+      ? `<span class="warn">Больше 50 шардов Postgres - больно в эксплуатации. Для сообщений бери wide-column (Cassandra / ScyllaDB): ${N(c.cassNodes)} узлов при RF ${p.repl}.</span>`
+      : `<span class="ok">Postgres тянет: ${c.pgShardsCache} шардов по ${p.pgRepl} реплики.</span>`;
+    const diskNote = c.writePerShard > 650e6
+      ? `<span class="warn">Запись на шард ${BS(c.writePerShard)} больше SSD 650 МБ/с - нужно больше шардов.</span>`
+      : `Запись на один шард ${BS(c.writePerShard)}: SSD 650 МБ/с и даже HDD 250 МБ/с по потоку тянут, упираемся в RPS, а не в диск.`;
+
+    layersEl.innerHTML = [
+      layer(1, 'Клиент → LB → Gateway', [
+        row('Входящие запросы, среднее', N(c.gwIn) + ' RPS', `send ${N(c.send)} + view ${N(c.view)} + markRead ${N(c.mark)} + heartbeat ${N(c.pres)}`),
+        row('Входящие, пик', N(c.gwIn * K) + ' RPS', `× ${K}`),
+        row('Ядер / подов только под входящие', `${N(c.inCores)} / ${c.inPods} × ${p.cores}`, `пик / (${p.rpc} × ${p.util}), без сокетов и fan-out`),
+        row('Исходящие события в сокеты, пик', N(c.gwOut * K) + '/с', `доставки ${N(c.deliv)} + квитанции ${N(c.receipts)}, × ${K}`),
+        row('Получателей на сообщение', dec(c.r, 1), `${1 - p.g} × 1 + ${p.g} × (${p.gsize} - 1)`),
+        row('Соединений онлайн, среднее / пик', `${N(c.conns)} / ${N(c.connsPeak)}`, `DAU × ${p.online} × ${p.devices} устр.`),
+        row('RAM под соединения в пик', B(c.gwRam), `× ${p.connKB} КБ`),
+        row('Gateway-инстансов', N(c.gwInst), `по соединениям ${N(c.gwByConn)}, по CPU ${N(c.gwByCpu)}: берем большее`),
+      ], c.gwByConn > c.gwByCpu ? 'Gateway упирается в число соединений, а не в CPU: скейлим по connections, а не по загрузке.' : 'Gateway упирается в CPU: heartbeat и fan-out дороже, чем держать сокеты.'),
+      layer(2, 'Сервисы (stateless, го)', [
+        ...svcRows,
+        row('Итого', `${N(c.svcInst)} инст. / ${N(c.svcCores)} ядер`, `RAM ${B(c.svcInst * p.svcRam * 1e9)}`),
+        row('Запросов в полете (Литтл)', N(c.inflightSvc), `пик входа × ${p.svcLat} мс`),
+      ], 'Минимум 2 инстанса на сервис даже при копеечной нагрузке, иначе падение одного = простой. Между регионами умножай на число регионов.'),
+      layer(3, 'Кеш (Redis)', [
+        row('Активных чатов в сутки', N(c.hotChats), `DAU × ${p.activeChats} / ${dec(c.m)} участников в чате`),
+        row('Горячее окно чатов', B(c.cacheWin), `чатов × ${p.hotMsgs} сообщ. × ${B(c.msgSize)} × ${p.redisOver}`),
+        row('Presence (last_seen всех DAU)', B(c.cachePres), 'DAU × 100 Б'),
+        row('Сессии (user → gateway)', B(c.cacheSess), 'соединений × 100 Б'),
+        row('RAM итого', B(c.cacheRam), ''),
+        row('Операций в пик', N(c.cacheOps) + '/с', 'история + запись в окно + heartbeat + статусы + роутинг доставки'),
+        row('Шардов / узлов с репликой', `${N(c.redisShards)} / ${N(c.redisNodes)}`, `по RAM ${N(c.redisByRam)}, по ops ${N(c.redisByOps)}`),
+      ], c.redisByOps > c.redisByRam ? 'Redis упирается в операции, а не в память: главный потребитель heartbeat. Обнуляй heartbeat (поле = 0) и смотри, сколько узлов уходит.' : 'Redis упирается в память: режь горячее окно или число активных чатов.'),
+      layer(4, 'База: без кеша и с кешем', [
+        row('Запись, пик', N(c.wP) + ' RPS', `(send ${N(c.send)} + квитанции ${N(c.receipts)} / ${p.ackBatch}) × ${K}`),
+        row('Чтение без кеша, пик', N(c.rNoP) + ' RPS', `view × ${K}`),
+        row('Чтение с кешем, пик', N(c.rCP) + ' RPS', `× (1 - ${p.hit})`),
+        row('Шардов Postgres без кеша / с кешем', `${N(c.pgShardsNo)} / ${N(c.pgShardsCache)}`, `max(запись / ${p.pgRps}, чтение / (${p.pgRps} × ${1 + p.pgRepl}))`),
+        row('Узлов Cassandra', N(c.cassNodes), `(запись × RF ${p.repl} + чтение) / ${N(p.cassOps)}`),
+        row('Запросов в базе в полете, без кеша / с кешем', `${N(c.inflightDbNo)} / ${N(c.inflightDbCache)}`, `× ${p.dbLat} мс = нужный размер пулов`),
+      ], pgNote),
+      layer(5, 'Хранилище', [
+        row('Сообщение', B(c.msgSize), `${p.avgChars} × ${p.bpc} + ${p.meta}`),
+        row('Трафик записи текста', BS(c.textIn), `send × размер`),
+        row('Трафик чтения истории (без кеша)', BS(c.readTraffic), `view × ${p.hotMsgs} сообщ.`),
+        row('Текст в сутки / в год', `${B(c.textDay)} / ${B(c.textYear)}`, `× ${p.idx} индексы`),
+        row(`Capacity на ${p.years} лет`, B(c.capInit), `год × ${p.years} × 2`),
+        row('С репликацией и бэкапами', B(c.capRepl), `× ${p.repl} + ${p.backup} бэкап`),
+        row('Дисков', N(c.disks), `/ ${p.diskTB} ТБ`),
+        row('SSD (горячее) / HDD (холодное)', `${B(c.ssd)} / ${B(c.hdd)}`, `последние ${p.hotDays} дней на SSD`),
+        row('Картинки: вход / CDN наружу', `${BS(c.imgIn)} / ${BS(c.imgOut)}`, `send × ${p.imgShare} × ${p.imgPer} × ${p.imgKB} КБ, наружу × ${dec(c.r)} получателей`),
+        row('Картинки на сервере', B(c.imgStore), `сутки × ${p.imgDays} дн. × ${p.repl}`),
+      ], diskNote),
+      layer(6, 'Доступность', [
+        row(`Простой в год при ${p.sla}%`, DUR(c.downYear), '(1 - SLA) × 365 × 24 ч'),
+        row('В месяц / в неделю', `${DUR(c.downYear / 12)} / ${DUR(c.downYear / 52)}`, 'error budget'),
+      ], 'Одна зона доступности не дает 99.95%: минимум 3 зоны, без единой точки отказа на gateway, Kafka и базе.'),
+    ].join('');
+
+    fillSolution(c);
+  }
+
+  function fillSolution(c) {
+    const p = c.p, K = c.K;
+    const V = {
+      dau: N(c.dau), downYear: DUR(c.downYear), downMonth: DUR(c.downYear / 12),
+      avgChars: p.avgChars, gShare: P(p.g), gSize: p.gsize, devices: dec(p.devices), imgKB: p.imgKB + ' КБ', imgDays: p.imgDays,
+      peak: p.peak + 'x', sendAvg: N(c.send), sendPeak: N(c.send * K), viewAvg: N(c.view), viewPeak: N(c.view * K),
+      presAvg: N(c.pres), presPeak: N(c.pres * K), delivAvg: N(c.deliv), delivPeak: N(c.deliv * K), pushAvg: N(c.push), pushPeak: N(c.push * K),
+      msgSize: B(c.msgSize), textDay: B(c.textDay), textYear: B(c.textYear), years: p.years, capRepl: B(c.capRepl), repl: p.repl,
+      disks: N(c.disks), diskTB: p.diskTB + ' ТБ', imgIn: BS(c.imgIn), imgOut: BS(c.imgOut), imgStore: B(c.imgStore), textIn: BS(c.textIn),
+      connsPeak: N(c.connsPeak), gwRam: B(c.gwRam), connKB: p.connKB + ' КБ', cacheRam: B(c.cacheRam), recip: dec(c.r),
+      dbWritePeak: N(c.wP) + ' RPS', hotMsgs: p.hotMsgs, redisNodes: N(c.redisNodes), hit: P(p.hit),
+      dbReadNoPeak: N(c.rNoP), dbReadCachePeak: N(c.rCP), pgShardsCache: N(c.pgShardsCache), cassNodes: N(c.cassNodes),
+      gwInst: N(c.gwInst) + ' инстансов',
+    };
+    document.querySelectorAll('[data-v]').forEach(el => { const k = el.dataset.v; if (k in V) el.textContent = V[k]; });
+  }
+
+  // ---------- пресеты, режимы, вкладки ----------
+  const presetsEl = $('#presets');
+  presetsEl.innerHTML = Object.keys(PRESETS).map((k, i) => `<button data-p="${k}" class="${i ? '' : 'on'}">${k}</button>`).join('');
+  function applyPreset(name) {
+    const pr = PRESETS[name];
+    Object.keys(DEF).forEach(k => { $('#f-' + k).value = k in pr ? pr[k] : DEF[k]; });
+    setMode(pr.mode);
+    presetsEl.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.p === name));
+    render();
+  }
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll('input[name=mode]').forEach(r => r.checked = r.value === m);
+  }
+  presetsEl.addEventListener('click', e => { const b = e.target.closest('button'); if (b) applyPreset(b.dataset.p); });
+  document.querySelectorAll('input[name=mode]').forEach(r => r.addEventListener('change', () => { setMode(r.value); render(); }));
+
+  function showTab(t) {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+    $('#tab-calc').hidden = t !== 'calc';
+    $('#tab-sol').hidden = t !== 'sol';
+    try { localStorage.setItem('wa-tab', t); } catch (e) {}
+  }
+  document.querySelector('.tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) showTab(b.dataset.tab); });
+
+  buildInputs();
+  render();
+  try { const t = localStorage.getItem('wa-tab'); if (t) showTab(t); } catch (e) {}
+})();
+</script>
+</body>
+</html>
